@@ -1,0 +1,13 @@
+{
+  "intent": "ownership",
+  "summary_answer": "Formal owner for frontend: Stewart Cymbal (cymbal-stewart). Top active maintainers by commit recency: cymbal-stewart (62 commits, recency 18.76), yuri-t (44 commits, recency 8.75), alex-m (29 commits, recency 4.62) [frontend]. (Citations: [frontend], [cymbal-stewart])",
+  "detailed_answer": "Formal owner for frontend: Stewart Cymbal (cymbal-stewart). Top active maintainers by commit recency: cymbal-stewart (62 commits, recency 18.76), yuri-t (44 commits, recency 8.75), alex-m (29 commits, recency 4.62) [frontend].",
+  "cited_node_ids": [
+    "frontend",
+    "cymbal-stewart",
+    "cymbal-stewart",
+    "yuri-t"
+  ],
+  "is_superseded": false,
+  "is_stale": false
+}

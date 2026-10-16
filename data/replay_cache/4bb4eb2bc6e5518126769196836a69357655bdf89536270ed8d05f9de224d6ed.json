@@ -1,0 +1,12 @@
+{
+  "intent": "lineage",
+  "summary_answer": "Found architectural decisions: dec_cart_redis: Use standalone Redis instance for cart session storage to minimize memory footprint. (SUPERSEDED by dec_cart_valkey) | dec_redis_connection_pool: Cap cartservice Redis client connection pool to 20 sockets with keepalive heartbeats every 30 seconds. [dec_cart_redis]. (Citations: [dec_cart_redis], [dec_redis_connection_pool])",
+  "detailed_answer": "Found architectural decisions: dec_cart_redis: Use standalone Redis instance for cart session storage to minimize memory footprint. (SUPERSEDED by dec_cart_valkey) | dec_redis_connection_pool: Cap cartservice Redis client connection pool to 20 sockets with keepalive heartbeats every 30 seconds. [dec_cart_redis].",
+  "cited_node_ids": [
+    "dec_cart_redis",
+    "dec_redis_connection_pool",
+    "dec_cart_valkey"
+  ],
+  "is_superseded": true,
+  "is_stale": false
+}

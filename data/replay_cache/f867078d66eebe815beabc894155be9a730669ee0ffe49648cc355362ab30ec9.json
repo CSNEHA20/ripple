@@ -1,0 +1,10 @@
+{
+  "intent": "freshness",
+  "summary_answer": "Documentation freshness check: 1 out-of-date doc(s) found: Checkout Orchestrator Specification (stale (5 merged PRs since verification)) [doc_checkoutservice]. (Citations: [doc_checkoutservice])",
+  "detailed_answer": "Documentation freshness check: 1 out-of-date doc(s) found: Checkout Orchestrator Specification (stale (5 merged PRs since verification)) [doc_checkoutservice].",
+  "cited_node_ids": [
+    "doc_checkoutservice"
+  ],
+  "is_superseded": false,
+  "is_stale": true
+}

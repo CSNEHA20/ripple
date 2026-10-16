@@ -903,6 +903,77 @@ def api_reject_incident_action(
         raise HTTPException(status_code=500, detail=f"Action rejection failed: {str(e)}")
 
 
+# ============================================================================
+# M8: Company-Brain Q&A API
+# ============================================================================
+
+from app.brain import (
+    ask_brain,
+    get_qa_history,
+    check_docs_freshness,
+)
+
+
+class AskBrainRequest(BaseModel):
+    question: str
+    mode: str = "replay"
+
+
+@app.post("/ask")
+@app.post("/api/ask")
+def api_ask_brain(
+    req: AskBrainRequest,
+    graph: TenantGraph = Depends(get_current_tenant),
+):
+    """Company-Brain Q&A: Natural language questions answered from the graph with sources."""
+    try:
+        result, trace = ask_brain(
+            graph=graph,
+            question=req.question,
+            tenant_id=graph.tenant_id,
+            mode=req.mode,
+        )
+        return {
+            "status": "success",
+            "data": result,
+            "trace": trace.to_dict(),
+        }
+    except Exception as e:
+        logger.error(f"Company-brain Q&A query failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Company-brain Q&A query failed: {str(e)}")
+
+
+@app.get("/ask/history")
+@app.get("/api/ask/history")
+def api_get_brain_history(
+    limit: int = Query(default=20, ge=1, le=100),
+    graph: TenantGraph = Depends(get_current_tenant),
+):
+    """Retrieve persistent conversation history for this tenant."""
+    history = get_qa_history(graph=graph, tenant_id=graph.tenant_id, limit=limit)
+    return {
+        "tenant_id": graph.tenant_id,
+        "count": len(history),
+        "history": history,
+    }
+
+
+@app.get("/brain/freshness")
+@app.get("/api/brain/freshness")
+def api_check_brain_freshness(
+    service: str | None = Query(default=None, description="Optional service filter"),
+    graph: TenantGraph = Depends(get_current_tenant),
+):
+    """Check documentation freshness against subsequent merged pull requests."""
+    stale_docs, trace = check_docs_freshness(graph=graph, service=service)
+    return {
+        "count": len(stale_docs),
+        "stale_docs": stale_docs,
+        "trace": trace.to_dict(),
+    }
+
+
+
 
 
 

@@ -1,0 +1,13 @@
+{
+  "intent": "outcome_history",
+  "summary_answer": "Fix 'rb_restart' HAS previously failed in recorded incidents (fail count: 2.0, historical success rate: 50.0%) [rb_restart].",
+  "detailed_answer": "Fix 'rb_restart' HAS previously failed in recorded incidents (fail count: 2.0, historical success rate: 50.0%) [rb_restart].",
+  "cited_node_ids": [
+    "rb_restart",
+    "outcome_inc_inc_hist_01_rb_restart_failed",
+    "outcome_inc_inc_hist_02_rb_restart_failed",
+    "outcome_inc_inc_hist_03_rb_restart_failed"
+  ],
+  "is_superseded": false,
+  "is_stale": false
+}

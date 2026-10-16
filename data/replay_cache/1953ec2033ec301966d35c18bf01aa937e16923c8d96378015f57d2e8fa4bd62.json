@@ -1,0 +1,13 @@
+{
+  "intent": "impact",
+  "summary_answer": "If currencyservice fails, blast radius impacts 3 downstream service(s): [checkoutservice, frontend, loadgenerator] [currencyservice]. (Citations: [currencyservice], [checkoutservice])",
+  "detailed_answer": "If currencyservice fails, blast radius impacts 3 downstream service(s): [checkoutservice, frontend, loadgenerator] [currencyservice].",
+  "cited_node_ids": [
+    "currencyservice",
+    "checkoutservice",
+    "frontend",
+    "loadgenerator"
+  ],
+  "is_superseded": false,
+  "is_stale": false
+}
