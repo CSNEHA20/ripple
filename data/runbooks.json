@@ -1,0 +1,138 @@
+{
+  "runbooks": [
+    {
+      "id": "rb_rollback",
+      "title": "Rollback Recent Deployment",
+      "description": "Roll back the most recent application container image/release to the previous known good deployment tag.",
+      "action_class": "needs_approval",
+      "assumes": [],
+      "steps": [
+        "Identify previous stable container image tag or deployment SHA",
+        "Issue kubectl rollout undo or helm rollback command",
+        "Monitor rolling pod termination and new container health probes",
+        "Validate p95 latency and error rate return to baseline"
+      ],
+      "success_count": 5,
+      "fail_count": 0
+    },
+    {
+      "id": "rb_restart",
+      "title": "Rolling Pod Restart",
+      "description": "Perform a rolling restart of service replica pods to clear transient state, leaks, or deadlocks.",
+      "action_class": "needs_approval",
+      "assumes": [],
+      "steps": [
+        "Initiate kubectl rollout restart deployment",
+        "Observe staggered pod cycling without dropping active traffic",
+        "Check memory and CPU utilization after warm-up",
+        "Confirm gRPC and HTTP endpoint liveness"
+      ],
+      "success_count": 3,
+      "fail_count": 2
+    },
+    {
+      "id": "rb_scale_up",
+      "title": "Horizontal Pod Scale Up",
+      "description": "Increase replica count or HPA ceiling to absorb traffic spikes or high request concurrency.",
+      "action_class": "reversible",
+      "assumes": [],
+      "steps": [
+        "Inspect current replica target and CPU/memory headroom",
+        "Increase replica count by 2x or raise HPA maxReplicas",
+        "Verify newly scheduled pods become Ready and join load balancer",
+        "Monitor distributed request queuing and throughput"
+      ],
+      "success_count": 2,
+      "fail_count": 1
+    },
+    {
+      "id": "rb_cache_flush",
+      "title": "Flush Datastore Redis Cache",
+      "description": "Flush corrupted or stale key-value cart sessions in Redis cache.",
+      "action_class": "needs_approval",
+      "assumes": ["cartservice->redis-cart"],
+      "steps": [
+        "Verify direct connectivity to redis-cart service",
+        "Issue non-blocking FLUSHDB ASYNC to clear corrupted cart sessions",
+        "Monitor cartservice session recreation and Redis memory usage",
+        "Verify 200 OK responses on GetCart and AddItem endpoints"
+      ],
+      "success_count": 2,
+      "fail_count": 0
+    },
+    {
+      "id": "rb_circuit_breaker",
+      "title": "Trip Circuit Breaker & Fallback",
+      "description": "Trip gRPC circuit breaker or enable graceful fallback mode for failing downstream dependency.",
+      "action_class": "reversible",
+      "assumes": [],
+      "steps": [
+        "Enable fallback mode in service dynamic configuration",
+        "Cap downstream call timeout to 500ms with fail-fast response",
+        "Return cached or graceful empty response to client",
+        "Verify upstream caller p95 latency normalizes"
+      ],
+      "success_count": 3,
+      "fail_count": 0
+    },
+    {
+      "id": "rb_rate_limit",
+      "title": "Enable Ingress Rate Limiting",
+      "description": "Apply client-side rate limiting / token bucket filter on excessive traffic or abusive load.",
+      "action_class": "reversible",
+      "assumes": [],
+      "steps": [
+        "Assess current RPS vs standard peak traffic baseline",
+        "Deploy ingress Envoy token-bucket rate limiter rule",
+        "Throttle non-critical and synthetic traffic spikes with 429",
+        "Confirm core transaction flow latency stabilizes"
+      ],
+      "success_count": 2,
+      "fail_count": 0
+    },
+    {
+      "id": "rb_config_revert",
+      "title": "Revert Dynamic Configuration Flag",
+      "description": "Revert dynamic runtime configuration or feature flag to default settings.",
+      "action_class": "reversible",
+      "assumes": [],
+      "steps": [
+        "Audit configuration change log for modifications in the last 24h",
+        "Toggle identified feature flag back to default safe value",
+        "Broadcast config update signal or trigger hot reload",
+        "Verify thread pool worker utilization normalizes"
+      ],
+      "success_count": 2,
+      "fail_count": 0
+    },
+    {
+      "id": "rb_db_reconnect",
+      "title": "Drain & Reset Connection Pool",
+      "description": "Reset stale or leaked TCP connection pool sockets to backing datastore.",
+      "action_class": "needs_approval",
+      "assumes": ["cartservice->redis-cart"],
+      "steps": [
+        "Inspect connection pool socket states and pool exhaustion metrics",
+        "Trigger orderly connection pool purge and socket re-initialization",
+        "Validate TCP keepalive handshakes complete successfully",
+        "Observe query latency and socket reuse statistics"
+      ],
+      "success_count": 1,
+      "fail_count": 0
+    },
+    {
+      "id": "rb_payment_mock_failover",
+      "title": "Failover to Legacy Mock Payment Gateway",
+      "description": "Switch legacy direct checkout payment route to mock merchant fallback endpoint.",
+      "action_class": "needs_approval",
+      "assumes": ["checkoutservice->mock-merchant-gateway"],
+      "steps": [
+        "Check legacy mock gateway endpoint availability",
+        "Update DNS alias to redirect direct checkout billing calls",
+        "Verify payment transaction authorizations complete"
+      ],
+      "success_count": 1,
+      "fail_count": 0
+    }
+  ]
+}

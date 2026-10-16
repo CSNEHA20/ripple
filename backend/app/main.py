@@ -180,3 +180,118 @@ def smoke_test(tenant: str = Query(default="smoke", description="Tenant graph to
     except Exception as e:
         logger.error(f"Smoke test failed: {e}")
         raise HTTPException(status_code=500, detail=f"FalkorDB smoke test failed: {str(e)}")
+
+
+# ============================================================================
+# M3: Scenario Simulator & Runbooks Endpoints
+# ============================================================================
+
+from pydantic import BaseModel
+from fastapi import Depends
+from app.scenarios.catalog import (
+    list_scenarios,
+    get_scenario,
+    list_runbooks,
+    get_runbook,
+)
+from app.scenarios.engine import (
+    load_scenario,
+    seed_historical_incidents,
+)
+from app.scenarios.outcomes import apply_intervention
+
+
+class InterveneRequest(BaseModel):
+    runbook_id: str
+
+
+class LoadScenarioRequest(BaseModel):
+    alert_ts: float | None = None
+
+
+@app.get("/scenarios")
+@app.get("/api/scenarios")
+def api_list_scenarios(family: str | None = Query(default=None, description="Filter by scenario family")):
+    """List available scenarios in the simulator catalog."""
+    scenarios = list_scenarios(family=family)
+    return {
+        "count": len(scenarios),
+        "family_filter": family,
+        "scenarios": scenarios,
+    }
+
+
+@app.get("/scenarios/{scenario_id}")
+@app.get("/api/scenarios/{scenario_id}")
+def api_get_scenario(scenario_id: str):
+    """Retrieve details for a specific scenario by ID."""
+    sc = get_scenario(scenario_id)
+    if not sc:
+        raise HTTPException(status_code=404, detail=f"Scenario '{scenario_id}' not found")
+    return sc
+
+
+@app.post("/scenarios/{scenario_id}/load")
+@app.post("/api/scenarios/{scenario_id}/load")
+def api_load_scenario(
+    scenario_id: str,
+    body: LoadScenarioRequest | None = None,
+    graph: TenantGraph = Depends(get_current_tenant),
+):
+    """Load a simulated scenario into the active tenant graph.
+    Creates Alert, MetricSnapshots, Deployments, and ArchitectureChanges flagged source='seeded'.
+    """
+    sc = get_scenario(scenario_id)
+    if not sc:
+        raise HTTPException(status_code=404, detail=f"Scenario '{scenario_id}' not found")
+
+    alert_ts = body.alert_ts if body else None
+    try:
+        result = load_scenario(graph=graph, scenario_id=scenario_id, alert_ts=alert_ts)
+        return result
+    except Exception as e:
+        logger.error(f"Failed to load scenario '{scenario_id}': {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to load scenario: {str(e)}")
+
+
+@app.post("/scenarios/{scenario_id}/intervene")
+@app.post("/api/scenarios/{scenario_id}/intervene")
+def api_apply_intervention(
+    scenario_id: str,
+    req: InterveneRequest,
+):
+    """Execute a simulated runbook intervention against a scenario and return post-fix metrics."""
+    try:
+        outcome = apply_intervention(scenario_id=scenario_id, runbook_id=req.runbook_id)
+        return outcome
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logger.error(f"Failed to apply intervention: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/runbooks")
+@app.get("/api/runbooks")
+def api_list_runbooks():
+    """List all available operational runbooks with dependency assumptions."""
+    rbs = list_runbooks()
+    return {
+        "count": len(rbs),
+        "runbooks": rbs,
+    }
+
+
+@app.post("/scenarios/seed-historical")
+@app.post("/api/scenarios/seed-historical")
+def api_seed_historical(
+    graph: TenantGraph = Depends(get_current_tenant),
+):
+    """Seed historical incidents into the tenant graph for episodic and outcome memory."""
+    try:
+        res = seed_historical_incidents(graph=graph)
+        return res
+    except Exception as e:
+        logger.error(f"Failed to seed historical incidents: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to seed historical incidents: {str(e)}")
+

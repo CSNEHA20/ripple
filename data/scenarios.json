@@ -1,0 +1,643 @@
+{
+  "scenarios": [
+    {
+      "id": "inc_hist_01",
+      "family": "historical",
+      "title": "Historical Incident: Payment Service Bad Deployment Latency",
+      "description": "Deployment v1.4.2 introduced unoptimized synchronous cryptographic verification in paymentservice, causing p95 latency to exceed 2500ms.",
+      "alert": {
+        "service": "paymentservice",
+        "text": "p95 latency > 2500ms on paymentservice credit card authorization",
+        "severity": "CRITICAL"
+      },
+      "ground_truth": {
+        "root_cause_service": "paymentservice",
+        "root_cause_type": "bad_deploy",
+        "correct_runbook": "rb_rollback",
+        "memory_should_help": true
+      },
+      "metrics": [
+        {"service": "paymentservice", "status": "failing", "latency_p95_ms": 2650.0, "error_rate": 0.09},
+        {"service": "checkoutservice", "status": "degraded", "latency_p95_ms": 1350.0, "error_rate": 0.05},
+        {"service": "frontend", "status": "degraded", "latency_p95_ms": 820.0, "error_rate": 0.02},
+        {"service": "cartservice", "status": "normal", "latency_p95_ms": 25.0, "error_rate": 0.0},
+        {"service": "currencyservice", "status": "normal", "latency_p95_ms": 18.0, "error_rate": 0.0}
+      ],
+      "deployments": [
+        {"service": "paymentservice", "hours_before_alert": 1.5, "version": "v1.4.2"}
+      ],
+      "architecture_changes": [],
+      "interventions": {
+        "rb_rollback": "resolved",
+        "rb_restart": "failed",
+        "rb_scale_up": "partial"
+      }
+    },
+    {
+      "id": "inc_hist_02",
+      "family": "historical",
+      "title": "Historical Incident: Cart Service Redis Connection Pool Exhaustion",
+      "description": "TCP connection leak between cartservice and redis-cart exhausted the client pool under sustained traffic.",
+      "alert": {
+        "service": "cartservice",
+        "text": "cartservice Redis connection pool exhausted - 500 internal errors",
+        "severity": "CRITICAL"
+      },
+      "ground_truth": {
+        "root_cause_service": "redis-cart",
+        "root_cause_type": "dependency_saturation",
+        "correct_runbook": "rb_db_reconnect",
+        "memory_should_help": true
+      },
+      "metrics": [
+        {"service": "cartservice", "status": "failing", "latency_p95_ms": 1900.0, "error_rate": 0.22},
+        {"service": "redis-cart", "status": "failing", "latency_p95_ms": 850.0, "error_rate": 0.18},
+        {"service": "frontend", "status": "degraded", "latency_p95_ms": 620.0, "error_rate": 0.08},
+        {"service": "paymentservice", "status": "normal", "latency_p95_ms": 42.0, "error_rate": 0.0}
+      ],
+      "deployments": [],
+      "architecture_changes": [],
+      "interventions": {
+        "rb_db_reconnect": "resolved",
+        "rb_scale_up": "partial",
+        "rb_restart": "failed"
+      }
+    },
+    {
+      "id": "inc_hist_03",
+      "family": "historical",
+      "title": "Historical Incident: Currency Service Third-Party Upstream Timeout",
+      "description": "External European Central Bank exchange rates endpoint degraded, causing currencyservice worker threads to hang waiting on HTTP sockets.",
+      "alert": {
+        "service": "currencyservice",
+        "text": "currencyservice exchange rate upstream provider timeout",
+        "severity": "HIGH"
+      },
+      "ground_truth": {
+        "root_cause_service": "currencyservice",
+        "root_cause_type": "upstream_timeout",
+        "correct_runbook": "rb_circuit_breaker",
+        "memory_should_help": true
+      },
+      "metrics": [
+        {"service": "currencyservice", "status": "failing", "latency_p95_ms": 3200.0, "error_rate": 0.15},
+        {"service": "frontend", "status": "degraded", "latency_p95_ms": 780.0, "error_rate": 0.04},
+        {"service": "checkoutservice", "status": "degraded", "latency_p95_ms": 940.0, "error_rate": 0.05},
+        {"service": "productcatalogservice", "status": "normal", "latency_p95_ms": 30.0, "error_rate": 0.0}
+      ],
+      "deployments": [],
+      "architecture_changes": [],
+      "interventions": {
+        "rb_circuit_breaker": "resolved",
+        "rb_restart": "failed",
+        "rb_scale_up": "failed"
+      }
+    },
+    {
+      "id": "inc_hist_04",
+      "family": "historical",
+      "title": "Historical Incident: Checkout Service Failure Cascading from Payment",
+      "description": "Checkout failure rate spiked to 18% because paymentservice v1.3.9 was rejecting valid credit card authorization calls.",
+      "alert": {
+        "service": "checkoutservice",
+        "text": "checkoutservice end-to-end checkout failure rate > 15%",
+        "severity": "CRITICAL"
+      },
+      "ground_truth": {
+        "root_cause_service": "paymentservice",
+        "root_cause_type": "bad_deploy",
+        "correct_runbook": "rb_rollback",
+        "memory_should_help": true
+      },
+      "metrics": [
+        {"service": "checkoutservice", "status": "failing", "latency_p95_ms": 1800.0, "error_rate": 0.18},
+        {"service": "paymentservice", "status": "failing", "latency_p95_ms": 2200.0, "error_rate": 0.25},
+        {"service": "frontend", "status": "degraded", "latency_p95_ms": 900.0, "error_rate": 0.10},
+        {"service": "shippingservice", "status": "normal", "latency_p95_ms": 40.0, "error_rate": 0.0}
+      ],
+      "deployments": [
+        {"service": "paymentservice", "hours_before_alert": 2.0, "version": "v1.3.9"}
+      ],
+      "architecture_changes": [],
+      "interventions": {
+        "rb_rollback": "resolved",
+        "rb_restart": "failed"
+      }
+    },
+    {
+      "id": "inc_hist_05",
+      "family": "historical",
+      "title": "Historical Incident: Recommendation Service OOM Memory Leak",
+      "description": "A cache eviction bug in recommendationservice Python ML runtime leaked embeddings in memory until pods were OOMKilled.",
+      "alert": {
+        "service": "recommendationservice",
+        "text": "recommendationservice container OOMKill warning - memory > 95%",
+        "severity": "HIGH"
+      },
+      "ground_truth": {
+        "root_cause_service": "recommendationservice",
+        "root_cause_type": "memory_leak",
+        "correct_runbook": "rb_restart",
+        "memory_should_help": true
+      },
+      "metrics": [
+        {"service": "recommendationservice", "status": "failing", "latency_p95_ms": 1750.0, "error_rate": 0.08},
+        {"service": "frontend", "status": "degraded", "latency_p95_ms": 450.0, "error_rate": 0.02},
+        {"service": "productcatalogservice", "status": "normal", "latency_p95_ms": 28.0, "error_rate": 0.0}
+      ],
+      "deployments": [],
+      "architecture_changes": [],
+      "interventions": {
+        "rb_restart": "resolved",
+        "rb_scale_up": "partial",
+        "rb_rollback": "failed"
+      }
+    },
+    {
+      "id": "inc_hist_06",
+      "family": "historical",
+      "title": "Historical Incident: Cart Service Corrupt Cache Flush",
+      "description": "Corrupted cart session payload serialized into Redis caused deserialization exceptions across all cart operations.",
+      "alert": {
+        "service": "cartservice",
+        "text": "cartservice deserialization failure on cached session tokens",
+        "severity": "HIGH"
+      },
+      "ground_truth": {
+        "root_cause_service": "redis-cart",
+        "root_cause_type": "corrupt_cache",
+        "correct_runbook": "rb_cache_flush",
+        "memory_should_help": true
+      },
+      "metrics": [
+        {"service": "cartservice", "status": "failing", "latency_p95_ms": 1200.0, "error_rate": 0.35},
+        {"service": "redis-cart", "status": "normal", "latency_p95_ms": 5.0, "error_rate": 0.0},
+        {"service": "frontend", "status": "degraded", "latency_p95_ms": 520.0, "error_rate": 0.12}
+      ],
+      "deployments": [],
+      "architecture_changes": [],
+      "interventions": {
+        "rb_cache_flush": "resolved",
+        "rb_restart": "failed"
+      }
+    },
+    {
+      "id": "inc_hist_07",
+      "family": "historical",
+      "title": "Historical Incident: Frontend Ingress Traffic Flood Spike",
+      "description": "Flash sale traffic surge overwhelmed frontend Envoy proxy worker threads with excessive concurrent HTTP requests.",
+      "alert": {
+        "service": "frontend",
+        "text": "frontend ingress 429 and high latency during flash sale",
+        "severity": "CRITICAL"
+      },
+      "ground_truth": {
+        "root_cause_service": "frontend",
+        "root_cause_type": "traffic_spike",
+        "correct_runbook": "rb_rate_limit",
+        "memory_should_help": true
+      },
+      "metrics": [
+        {"service": "frontend", "status": "failing", "latency_p95_ms": 2800.0, "error_rate": 0.19},
+        {"service": "checkoutservice", "status": "degraded", "latency_p95_ms": 650.0, "error_rate": 0.04},
+        {"service": "cartservice", "status": "degraded", "latency_p95_ms": 320.0, "error_rate": 0.02}
+      ],
+      "deployments": [],
+      "architecture_changes": [],
+      "interventions": {
+        "rb_rate_limit": "resolved",
+        "rb_scale_up": "partial",
+        "rb_restart": "failed"
+      }
+    },
+    {
+      "id": "sc_repeated_01",
+      "family": "repeated",
+      "title": "Repeated: Payment Service Bad Deployment Latency Spike",
+      "description": "Release v1.5.0 of paymentservice shipped an unindexed query in transaction logging, matching historical incident pattern.",
+      "alert": {
+        "service": "paymentservice",
+        "text": "paymentservice authorization latency > 2200ms",
+        "severity": "CRITICAL"
+      },
+      "ground_truth": {
+        "root_cause_service": "paymentservice",
+        "root_cause_type": "bad_deploy",
+        "correct_runbook": "rb_rollback",
+        "memory_should_help": true
+      },
+      "metrics": [
+        {"service": "paymentservice", "status": "failing", "latency_p95_ms": 2400.0, "error_rate": 0.08},
+        {"service": "checkoutservice", "status": "degraded", "latency_p95_ms": 1100.0, "error_rate": 0.05},
+        {"service": "frontend", "status": "degraded", "latency_p95_ms": 750.0, "error_rate": 0.03},
+        {"service": "cartservice", "status": "normal", "latency_p95_ms": 22.0, "error_rate": 0.0},
+        {"service": "currencyservice", "status": "normal", "latency_p95_ms": 15.0, "error_rate": 0.0}
+      ],
+      "deployments": [
+        {"service": "paymentservice", "hours_before_alert": 1.2, "version": "v1.5.0"},
+        {"service": "cartservice", "hours_before_alert": 48.0, "version": "v1.1.2"}
+      ],
+      "architecture_changes": [],
+      "interventions": {
+        "rb_rollback": "resolved",
+        "rb_restart": "failed",
+        "rb_scale_up": "partial"
+      }
+    },
+    {
+      "id": "sc_repeated_02",
+      "family": "repeated",
+      "title": "Repeated: Recommendation Service Memory Leak OOM",
+      "description": "Gradual memory leak in recommendationservice leads to container memory pressure and high latency, matching historical incident inc_hist_05.",
+      "alert": {
+        "service": "recommendationservice",
+        "text": "recommendationservice memory pressure and p95 latency spike",
+        "severity": "HIGH"
+      },
+      "ground_truth": {
+        "root_cause_service": "recommendationservice",
+        "root_cause_type": "memory_leak",
+        "correct_runbook": "rb_restart",
+        "memory_should_help": true
+      },
+      "metrics": [
+        {"service": "recommendationservice", "status": "failing", "latency_p95_ms": 1900.0, "error_rate": 0.06},
+        {"service": "frontend", "status": "degraded", "latency_p95_ms": 480.0, "error_rate": 0.02},
+        {"service": "productcatalogservice", "status": "normal", "latency_p95_ms": 25.0, "error_rate": 0.0},
+        {"service": "cartservice", "status": "normal", "latency_p95_ms": 20.0, "error_rate": 0.0}
+      ],
+      "deployments": [
+        {"service": "recommendationservice", "hours_before_alert": 72.0, "version": "v1.2.0"}
+      ],
+      "architecture_changes": [],
+      "interventions": {
+        "rb_restart": "resolved",
+        "rb_scale_up": "partial",
+        "rb_rollback": "failed"
+      }
+    },
+    {
+      "id": "sc_repeated_03",
+      "family": "repeated",
+      "title": "Repeated: Currency Service Exchange Rate Upstream Timeout",
+      "description": "Third-party currency conversion rate API latency hangs currencyservice, exactly matching historical incident inc_hist_03.",
+      "alert": {
+        "service": "currencyservice",
+        "text": "currencyservice exchange conversion latency > 3000ms",
+        "severity": "HIGH"
+      },
+      "ground_truth": {
+        "root_cause_service": "currencyservice",
+        "root_cause_type": "upstream_timeout",
+        "correct_runbook": "rb_circuit_breaker",
+        "memory_should_help": true
+      },
+      "metrics": [
+        {"service": "currencyservice", "status": "failing", "latency_p95_ms": 3100.0, "error_rate": 0.16},
+        {"service": "checkoutservice", "status": "degraded", "latency_p95_ms": 980.0, "error_rate": 0.06},
+        {"service": "frontend", "status": "degraded", "latency_p95_ms": 820.0, "error_rate": 0.04},
+        {"service": "paymentservice", "status": "normal", "latency_p95_ms": 38.0, "error_rate": 0.0}
+      ],
+      "deployments": [],
+      "architecture_changes": [],
+      "interventions": {
+        "rb_circuit_breaker": "resolved",
+        "rb_restart": "failed",
+        "rb_scale_up": "failed"
+      }
+    },
+    {
+      "id": "sc_variant_01",
+      "family": "variant",
+      "title": "Variant: Product Catalog Service Bad Deployment 500s",
+      "description": "New release v2.1.0 of productcatalogservice contains a JSON schema parsing bug, breaking product listings.",
+      "alert": {
+        "service": "productcatalogservice",
+        "text": "productcatalogservice 500 error rate > 12% on ListProducts",
+        "severity": "CRITICAL"
+      },
+      "ground_truth": {
+        "root_cause_service": "productcatalogservice",
+        "root_cause_type": "bad_deploy",
+        "correct_runbook": "rb_rollback",
+        "memory_should_help": true
+      },
+      "metrics": [
+        {"service": "productcatalogservice", "status": "failing", "latency_p95_ms": 1500.0, "error_rate": 0.14},
+        {"service": "frontend", "status": "degraded", "latency_p95_ms": 950.0, "error_rate": 0.10},
+        {"service": "recommendationservice", "status": "degraded", "latency_p95_ms": 720.0, "error_rate": 0.08},
+        {"service": "checkoutservice", "status": "degraded", "latency_p95_ms": 680.0, "error_rate": 0.05},
+        {"service": "cartservice", "status": "normal", "latency_p95_ms": 20.0, "error_rate": 0.0}
+      ],
+      "deployments": [
+        {"service": "productcatalogservice", "hours_before_alert": 0.8, "version": "v2.1.0"}
+      ],
+      "architecture_changes": [],
+      "interventions": {
+        "rb_rollback": "resolved",
+        "rb_restart": "failed",
+        "rb_scale_up": "failed"
+      }
+    },
+    {
+      "id": "sc_variant_02",
+      "family": "variant",
+      "title": "Variant: Shipping Service Carrier API Timeout",
+      "description": "Downstream shipping quote provider timeout causes shippingservice calls to block. Tests generalization of circuit breaker from currencyservice.",
+      "alert": {
+        "service": "shippingservice",
+        "text": "shippingservice external carrier quote timeout",
+        "severity": "HIGH"
+      },
+      "ground_truth": {
+        "root_cause_service": "shippingservice",
+        "root_cause_type": "upstream_timeout",
+        "correct_runbook": "rb_circuit_breaker",
+        "memory_should_help": true
+      },
+      "metrics": [
+        {"service": "shippingservice", "status": "failing", "latency_p95_ms": 2800.0, "error_rate": 0.12},
+        {"service": "checkoutservice", "status": "degraded", "latency_p95_ms": 920.0, "error_rate": 0.05},
+        {"service": "frontend", "status": "degraded", "latency_p95_ms": 510.0, "error_rate": 0.02},
+        {"service": "paymentservice", "status": "normal", "latency_p95_ms": 35.0, "error_rate": 0.0}
+      ],
+      "deployments": [],
+      "architecture_changes": [],
+      "interventions": {
+        "rb_circuit_breaker": "resolved",
+        "rb_restart": "failed",
+        "rb_scale_up": "failed"
+      }
+    },
+    {
+      "id": "sc_variant_03",
+      "family": "variant",
+      "title": "Variant: Checkout Service CPU Throttle Under Concurrency",
+      "description": "Checkoutservice experiences sudden goroutine starvation and CPU throttle under concurrent orders. Solved by horizontal scale up.",
+      "alert": {
+        "service": "checkoutservice",
+        "text": "checkoutservice CPU throttle and goroutine starvation under concurrency",
+        "severity": "CRITICAL"
+      },
+      "ground_truth": {
+        "root_cause_service": "checkoutservice",
+        "root_cause_type": "resource_exhaustion",
+        "correct_runbook": "rb_scale_up",
+        "memory_should_help": true
+      },
+      "metrics": [
+        {"service": "checkoutservice", "status": "failing", "latency_p95_ms": 2200.0, "error_rate": 0.11},
+        {"service": "frontend", "status": "degraded", "latency_p95_ms": 890.0, "error_rate": 0.06},
+        {"service": "paymentservice", "status": "normal", "latency_p95_ms": 40.0, "error_rate": 0.0},
+        {"service": "productcatalogservice", "status": "normal", "latency_p95_ms": 22.0, "error_rate": 0.0}
+      ],
+      "deployments": [],
+      "architecture_changes": [],
+      "interventions": {
+        "rb_scale_up": "resolved",
+        "rb_restart": "partial",
+        "rb_rollback": "failed"
+      }
+    },
+    {
+      "id": "sc_novel_01",
+      "family": "novel",
+      "title": "Novel: Ad Service gRPC Server Thread Deadlock",
+      "description": "Java concurrency deadlock in adservice worker thread pool blocks ad retrieval. No matching history; requires config revert.",
+      "alert": {
+        "service": "adservice",
+        "text": "adservice gRPC server thread deadlock - request timeout > 5000ms",
+        "severity": "MEDIUM"
+      },
+      "ground_truth": {
+        "root_cause_service": "adservice",
+        "root_cause_type": "thread_deadlock",
+        "correct_runbook": "rb_config_revert",
+        "memory_should_help": false
+      },
+      "metrics": [
+        {"service": "adservice", "status": "failing", "latency_p95_ms": 5200.0, "error_rate": 0.28},
+        {"service": "frontend", "status": "degraded", "latency_p95_ms": 420.0, "error_rate": 0.01},
+        {"service": "productcatalogservice", "status": "normal", "latency_p95_ms": 22.0, "error_rate": 0.0}
+      ],
+      "deployments": [],
+      "architecture_changes": [],
+      "interventions": {
+        "rb_config_revert": "resolved",
+        "rb_restart": "partial",
+        "rb_rollback": "failed"
+      }
+    },
+    {
+      "id": "sc_novel_02",
+      "family": "novel",
+      "title": "Novel: Email Service Worker Queue Exhaustion",
+      "description": "Uncaught SMTP exception loop caused emailservice background queue workers to freeze. Solved by clean pod restart.",
+      "alert": {
+        "service": "emailservice",
+        "text": "emailservice asynchronous worker queue full - SMTP dropped",
+        "severity": "LOW"
+      },
+      "ground_truth": {
+        "root_cause_service": "emailservice",
+        "root_cause_type": "worker_exhaustion",
+        "correct_runbook": "rb_restart",
+        "memory_should_help": false
+      },
+      "metrics": [
+        {"service": "emailservice", "status": "failing", "latency_p95_ms": 4100.0, "error_rate": 0.35},
+        {"service": "checkoutservice", "status": "normal", "latency_p95_ms": 45.0, "error_rate": 0.0},
+        {"service": "frontend", "status": "normal", "latency_p95_ms": 35.0, "error_rate": 0.0}
+      ],
+      "deployments": [],
+      "architecture_changes": [],
+      "interventions": {
+        "rb_restart": "resolved",
+        "rb_rollback": "failed",
+        "rb_scale_up": "partial"
+      }
+    },
+    {
+      "id": "sc_novel_03",
+      "family": "novel",
+      "title": "Novel: Frontend Ingress HTTP Header Buffer Overflow",
+      "description": "New release v3.0.1 of frontend contained an unhandled header length limit exception, rejecting ingress requests.",
+      "alert": {
+        "service": "frontend",
+        "text": "frontend HTTP header buffer overflow errors",
+        "severity": "CRITICAL"
+      },
+      "ground_truth": {
+        "root_cause_service": "frontend",
+        "root_cause_type": "bad_deploy",
+        "correct_runbook": "rb_rollback",
+        "memory_should_help": false
+      },
+      "metrics": [
+        {"service": "frontend", "status": "failing", "latency_p95_ms": 2900.0, "error_rate": 0.24},
+        {"service": "checkoutservice", "status": "normal", "latency_p95_ms": 35.0, "error_rate": 0.0},
+        {"service": "cartservice", "status": "normal", "latency_p95_ms": 20.0, "error_rate": 0.0},
+        {"service": "productcatalogservice", "status": "normal", "latency_p95_ms": 25.0, "error_rate": 0.0}
+      ],
+      "deployments": [
+        {"service": "frontend", "hours_before_alert": 0.5, "version": "v3.0.1"}
+      ],
+      "architecture_changes": [],
+      "interventions": {
+        "rb_rollback": "resolved",
+        "rb_restart": "failed",
+        "rb_scale_up": "failed"
+      }
+    },
+    {
+      "id": "sc_stale_trap_01",
+      "family": "stale_trap",
+      "title": "Stale-Fix Trap: Cart Service Decoupled from Redis",
+      "description": "Architecture change ac_cart_redis_decouple removed the direct link between cartservice and standalone redis-cart. Recommending the past cache flush fix rb_cache_flush is STALE and must be rejected.",
+      "alert": {
+        "service": "cartservice",
+        "text": "cartservice high latency on session lookup",
+        "severity": "HIGH"
+      },
+      "ground_truth": {
+        "root_cause_service": "cartservice",
+        "root_cause_type": "transient_deadlock",
+        "correct_runbook": "rb_restart",
+        "memory_should_help": false,
+        "stale_runbook": "rb_cache_flush",
+        "closed_edge": "cartservice->redis-cart"
+      },
+      "metrics": [
+        {"service": "cartservice", "status": "failing", "latency_p95_ms": 2100.0, "error_rate": 0.15},
+        {"service": "frontend", "status": "degraded", "latency_p95_ms": 610.0, "error_rate": 0.04},
+        {"service": "paymentservice", "status": "normal", "latency_p95_ms": 35.0, "error_rate": 0.0}
+      ],
+      "deployments": [],
+      "architecture_changes": [
+        {
+          "id": "ac_cart_redis_decouple",
+          "summary": "Decoupled cartservice from standalone redis-cart; migrated to distributed replicated memory cluster",
+          "hours_before_alert": 24.0,
+          "closes_edges": [
+            {"caller": "cartservice", "callee": "redis-cart"}
+          ],
+          "opens_edges": []
+        }
+      ],
+      "interventions": {
+        "rb_cache_flush": "failed",
+        "rb_restart": "resolved",
+        "rb_rollback": "failed"
+      }
+    },
+    {
+      "id": "sc_stale_trap_02",
+      "family": "stale_trap",
+      "title": "Stale-Fix Trap: Legacy Direct Mock Payment Fallover",
+      "description": "Architecture change closed legacy direct checkout gateway mock routing, requiring all payments through paymentservice. Recommending rb_payment_mock_failover must be rejected.",
+      "alert": {
+        "service": "checkoutservice",
+        "text": "checkoutservice payment gateway connection failure",
+        "severity": "CRITICAL"
+      },
+      "ground_truth": {
+        "root_cause_service": "checkoutservice",
+        "root_cause_type": "bad_deploy",
+        "correct_runbook": "rb_rollback",
+        "memory_should_help": false,
+        "stale_runbook": "rb_payment_mock_failover",
+        "closed_edge": "checkoutservice->mock-merchant-gateway"
+      },
+      "metrics": [
+        {"service": "checkoutservice", "status": "failing", "latency_p95_ms": 2500.0, "error_rate": 0.20},
+        {"service": "paymentservice", "status": "normal", "latency_p95_ms": 40.0, "error_rate": 0.0},
+        {"service": "frontend", "status": "degraded", "latency_p95_ms": 820.0, "error_rate": 0.08}
+      ],
+      "deployments": [
+        {"service": "checkoutservice", "hours_before_alert": 1.0, "version": "v2.0.4"}
+      ],
+      "architecture_changes": [
+        {
+          "id": "ac_checkout_gateway_route",
+          "summary": "Closed legacy direct checkout merchant gateway edge; all card payments must transit paymentservice",
+          "hours_before_alert": 48.0,
+          "closes_edges": [
+            {"caller": "checkoutservice", "callee": "mock-merchant-gateway"}
+          ],
+          "opens_edges": []
+        }
+      ],
+      "interventions": {
+        "rb_payment_mock_failover": "failed",
+        "rb_rollback": "resolved",
+        "rb_restart": "partial"
+      }
+    },
+    {
+      "id": "sc_misleading_01",
+      "family": "misleading_memory",
+      "title": "Misleading-Memory: Checkout Latency (Currency Timeout, not Payment Deploy)",
+      "description": "Symptoms mimic historical incident inc_hist_04 (checkout payment cascade), but paymentservice is completely healthy. Real cause is currencyservice timeout.",
+      "alert": {
+        "service": "frontend",
+        "text": "frontend checkout flow failing with high error rate > 20%",
+        "severity": "CRITICAL"
+      },
+      "ground_truth": {
+        "root_cause_service": "currencyservice",
+        "root_cause_type": "upstream_timeout",
+        "correct_runbook": "rb_circuit_breaker",
+        "memory_should_help": false,
+        "misleading_service": "paymentservice",
+        "misleading_runbook": "rb_rollback"
+      },
+      "metrics": [
+        {"service": "frontend", "status": "failing", "latency_p95_ms": 2800.0, "error_rate": 0.22},
+        {"service": "checkoutservice", "status": "failing", "latency_p95_ms": 2400.0, "error_rate": 0.25},
+        {"service": "currencyservice", "status": "failing", "latency_p95_ms": 4500.0, "error_rate": 0.40},
+        {"service": "paymentservice", "status": "normal", "latency_p95_ms": 45.0, "error_rate": 0.001},
+        {"service": "cartservice", "status": "normal", "latency_p95_ms": 25.0, "error_rate": 0.0}
+      ],
+      "deployments": [],
+      "architecture_changes": [],
+      "interventions": {
+        "rb_circuit_breaker": "resolved",
+        "rb_rollback": "failed",
+        "rb_restart": "failed"
+      }
+    },
+    {
+      "id": "sc_misleading_02",
+      "family": "misleading_memory",
+      "title": "Misleading-Memory: Cart Latency (Traffic Flood, not Redis Leak)",
+      "description": "Alert text mimics historical incident inc_hist_02 (cart connection saturation), but root cause is loadgenerator running 10x traffic spike.",
+      "alert": {
+        "service": "cartservice",
+        "text": "cartservice high latency and CPU saturation > 90%",
+        "severity": "CRITICAL"
+      },
+      "ground_truth": {
+        "root_cause_service": "loadgenerator",
+        "root_cause_type": "traffic_flood",
+        "correct_runbook": "rb_rate_limit",
+        "memory_should_help": false,
+        "misleading_service": "redis-cart",
+        "misleading_runbook": "rb_restart"
+      },
+      "metrics": [
+        {"service": "cartservice", "status": "failing", "latency_p95_ms": 2600.0, "error_rate": 0.18},
+        {"service": "frontend", "status": "failing", "latency_p95_ms": 2400.0, "error_rate": 0.15},
+        {"service": "loadgenerator", "status": "failing", "latency_p95_ms": 3000.0, "error_rate": 0.0},
+        {"service": "redis-cart", "status": "normal", "latency_p95_ms": 8.0, "error_rate": 0.0},
+        {"service": "paymentservice", "status": "normal", "latency_p95_ms": 40.0, "error_rate": 0.0}
+      ],
+      "deployments": [],
+      "architecture_changes": [],
+      "interventions": {
+        "rb_rate_limit": "resolved",
+        "rb_restart": "failed",
+        "rb_scale_up": "partial"
+      }
+    }
+  ]
+}
