@@ -5,10 +5,17 @@
 .ripple-app-layout {
   position: relative;
   display: flex;
-  min-height: 100vh;
+  height: 100vh;
   width: 100%;
   background-color: var(--bg-primary);
   color: var(--text-primary);
+  overflow: hidden;
+}
+
+.ripple-sidebar {
+  height: 100vh;
+  flex-shrink: 0;
+  overflow-y: auto;
   overflow-x: hidden;
 }
 
@@ -16,13 +23,16 @@
   position: relative;
   z-index: 1;
   flex: 1;
+  height: 100vh;
+  overflow-y: auto;
+  overflow-x: hidden;
   display: flex;
   flex-direction: column;
   min-width: 0;
 }
 
 .main-scroll-body {
-  flex: 1;
+  flex: 1 0 auto;
   width: 100%;
   max-width: 1680px;
   margin: 0 auto;

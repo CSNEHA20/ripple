@@ -48,6 +48,17 @@ const DiffCard: React.FC<{
   );
 };
 
+const DEFAULT_SERVICES = [
+  'checkoutservice',
+  'paymentservice',
+  'cartservice',
+  'productcatalogservice',
+  'currencyservice',
+  'shippingservice',
+  'emailservice',
+  'frontend',
+];
+
 export const CounterfactualPanel: React.FC<CounterfactualPanelProps> = ({
   services,
   currentIncidentId,
@@ -55,7 +66,7 @@ export const CounterfactualPanel: React.FC<CounterfactualPanelProps> = ({
   counterfactualResult,
   isLoading,
 }) => {
-  const uniq = Array.from(new Set(services));
+  const uniq = Array.from(new Set([...(services || []), ...DEFAULT_SERVICES]));
   const [selectedService, setSelectedService] = useState<string>(uniq[0] || 'checkoutservice');
 
   const handleRun = () => {

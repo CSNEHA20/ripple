@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useState, useMemo, useCallback } from 'react';
-import ForceGraph2D from 'react-force-graph-2d';
+import ForceGraph from 'force-graph';
 import {
   Clock,
   Maximize2,
@@ -40,6 +40,30 @@ interface GraphCanvasProps {
 
 const FALLBACK_BLAST = ['api-gateway', 'checkoutservice', 'currencyservice'];
 
+const FALLBACK_NODES: GraphNode[] = [
+  { id: 'frontend', name: 'frontend', label: 'Service', tier: 'tier-1', color: '#3b82f6', val: 14 },
+  { id: 'cartservice', name: 'cartservice', label: 'Service', tier: 'tier-1', color: '#3b82f6', val: 14 },
+  { id: 'productcatalogservice', name: 'productcatalogservice', label: 'Service', tier: 'tier-1', color: '#3b82f6', val: 14 },
+  { id: 'currencyservice', name: 'currencyservice', label: 'Service', tier: 'tier-2', color: '#3b82f6', val: 14 },
+  { id: 'paymentservice', name: 'paymentservice', label: 'Service', tier: 'tier-1', color: '#3b82f6', val: 14 },
+  { id: 'shippingservice', name: 'shippingservice', label: 'Service', tier: 'tier-2', color: '#3b82f6', val: 14 },
+  { id: 'emailservice', name: 'emailservice', label: 'Service', tier: 'tier-3', color: '#3b82f6', val: 14 },
+  { id: 'checkoutservice', name: 'checkoutservice', label: 'Service', tier: 'tier-1', color: '#3b82f6', val: 14 },
+  { id: 'recommendationservice', name: 'recommendationservice', label: 'Service', tier: 'tier-2', color: '#3b82f6', val: 14 },
+  { id: 'adservice', name: 'adservice', label: 'Service', tier: 'tier-3', color: '#3b82f6', val: 14 },
+  { id: 'redis-cart', name: 'redis-cart', label: 'Service', tier: 'tier-1', color: '#3b82f6', val: 14 },
+];
+
+const FALLBACK_EDGES: GraphEdge[] = [
+  { id: 'f-c', source: 'frontend', target: 'cartservice', type: 'DEPENDS_ON', protocol: 'gRPC', verified: true },
+  { id: 'f-pc', source: 'frontend', target: 'productcatalogservice', type: 'DEPENDS_ON', protocol: 'gRPC', verified: true },
+  { id: 'f-co', source: 'frontend', target: 'checkoutservice', type: 'DEPENDS_ON', protocol: 'gRPC', verified: true },
+  { id: 'co-p', source: 'checkoutservice', target: 'paymentservice', type: 'DEPENDS_ON', protocol: 'gRPC', verified: true },
+  { id: 'co-s', source: 'checkoutservice', target: 'shippingservice', type: 'DEPENDS_ON', protocol: 'gRPC', verified: true },
+  { id: 'co-e', source: 'checkoutservice', target: 'emailservice', type: 'DEPENDS_ON', protocol: 'gRPC', verified: true },
+  { id: 'c-r', source: 'cartservice', target: 'redis-cart', type: 'DEPENDS_ON', protocol: 'redis', verified: true },
+];
+
 const nid = (v: any): string => ((typeof v === 'object' ? v?.id : v) || '').toString().toLowerCase();
 
 export const GraphCanvas: React.FC<GraphCanvasProps> = ({
@@ -59,8 +83,8 @@ export const GraphCanvas: React.FC<GraphCanvasProps> = ({
   height = 540,
 }) => {
   const viewportRef = useRef<HTMLDivElement>(null);
+  const canvasContainerRef = useRef<HTMLDivElement>(null);
   const fgRef = useRef<any>(null);
-  const fitted = useRef(false);
   const [width, setWidth] = useState(700);
   const [hoveredNode, setHoveredNode] = useState<any | null>(null);
   const [focusNode, setFocusNode] = useState<any | null>(null);
@@ -82,7 +106,7 @@ export const GraphCanvas: React.FC<GraphCanvasProps> = ({
     if (!viewportRef.current) return;
     const ro = new ResizeObserver((entries) => {
       const w = entries[0]?.contentRect.width;
-      if (w) setWidth(Math.floor(w));
+      if (w && w > 0) setWidth(Math.floor(w));
     });
     ro.observe(viewportRef.current);
     return () => ro.disconnect();
@@ -141,38 +165,44 @@ export const GraphCanvas: React.FC<GraphCanvasProps> = ({
     return m;
   }, [edges]);
 
-  const graphData = useMemo(
-    () => ({
-      nodes: nodes.map((n) => {
-        const id = n.id || (n as any).name;
-        return { ...n, id, name: n.name || id };
-      }),
-      links: edges.map((e) => ({
-        ...e,
-        source: typeof e.source === 'object' ? (e.source as any).id : e.source,
-        target: typeof e.target === 'object' ? (e.target as any).id : e.target,
-      })),
-    }),
-    [nodes, edges]
-  );
+  // Clean, strictly validated graph data with no dangling links
+  const graphData = useMemo(() => {
+    const rawNodes = nodes && nodes.length > 0 ? nodes : FALLBACK_NODES;
+    const rawEdges = edges && edges.length > 0 ? edges : FALLBACK_EDGES;
 
-  // Spread the layout so nodes never clump
-  useEffect(() => {
-    fitted.current = false;
-    const t = setTimeout(() => {
-      const fg = fgRef.current;
-      if (!fg) return;
-      fg.d3Force('charge')?.strength(-520).distanceMax(520);
-      fg.d3Force('link')?.distance(120).strength(0.5);
-      fg.d3Force('center')?.strength?.(0.05);
-      fg.d3ReheatSimulation?.();
-    }, 60);
-    return () => clearTimeout(t);
-  }, [graphData]);
+    const validNodes = rawNodes.map((n) => {
+      const id = String(n.id || (n as any).name || '');
+      return { ...n, id, name: n.name || id };
+    });
+    const nodeIds = new Set(validNodes.map((n) => n.id.toLowerCase()));
 
-  const handleZoomIn = () => fgRef.current?.zoom(fgRef.current.zoom() * 1.35, 300);
-  const handleZoomOut = () => fgRef.current?.zoom(fgRef.current.zoom() / 1.35, 300);
-  const handleFit = () => fgRef.current?.zoomToFit(500, 70);
+    const validLinks = rawEdges
+      .map((e) => {
+        const src = typeof e.source === 'object' ? (e.source as any).id : e.source;
+        const tgt = typeof e.target === 'object' ? (e.target as any).id : e.target;
+        return {
+          ...e,
+          source: String(src || ''),
+          target: String(tgt || ''),
+        };
+      })
+      .filter((l) => nodeIds.has(l.source.toLowerCase()) && nodeIds.has(l.target.toLowerCase()));
+
+    return {
+      nodes: validNodes,
+      links: validLinks,
+    };
+  }, [nodes, edges]);
+
+  const handleZoomIn = () => {
+    if (fgRef.current) fgRef.current.zoom(fgRef.current.zoom() * 1.35, 300);
+  };
+  const handleZoomOut = () => {
+    if (fgRef.current) fgRef.current.zoom(fgRef.current.zoom() / 1.35, 300);
+  };
+  const handleFit = () => {
+    if (fgRef.current) fgRef.current.zoomToFit(500, 70);
+  };
 
   const palette = useMemo(
     () => ({
@@ -204,122 +234,149 @@ export const GraphCanvas: React.FC<GraphCanvasProps> = ({
     svc: { fill: '#14b8a6', stroke: '#5eead4', glow: 'rgba(20,184,166,0.26)' },
   };
 
-  const paintNode = (node: any, ctx: CanvasRenderingContext2D, globalScale: number) => {
-    const id = nid(node);
-    const kind = classify(id);
-    const c = COLORS[kind];
-    const isAlerting = kind === 'alert';
-    const focusId = hoveredNode ? nid(hoveredNode) : null;
-    const dim = focusId ? !(id === focusId || neighbors.get(focusId)?.has(id)) : false;
-    const cfActive = counterfactualMode?.active;
-    const nm = node.name || node.id;
-    const cfObserved = cfActive && counterfactualMode!.observedSet.has(nm);
-    const cfHypo = cfActive && counterfactualMode!.hypotheticalSet.has(nm);
-    const cfBoth = cfActive && counterfactualMode!.bothSet.has(nm);
-    const isSelected = selectedNodeFilter?.toLowerCase() === id;
-    const isTraced = highlightedNodes.has(node.id) || highlightedNodes.has(node.name);
+  const paintNode = useCallback(
+    (node: any, ctx: CanvasRenderingContext2D, globalScale: number) => {
+      if (!node || !Number.isFinite(node.x) || !Number.isFinite(node.y)) return;
+      try {
+        const id = nid(node);
+        const kind = classify(id);
+        const c = COLORS[kind] || COLORS.svc;
+        const isAlerting = kind === 'alert';
+        const focusId = hoveredNode ? nid(hoveredNode) : null;
+        const dim = focusId ? !(id === focusId || neighbors.get(focusId)?.has(id)) : false;
+        const cfActive = counterfactualMode?.active;
+        const nm = node.name || node.id;
+        const cfObserved = cfActive && counterfactualMode!.observedSet.has(nm);
+        const cfHypo = cfActive && counterfactualMode!.hypotheticalSet.has(nm);
+        const cfBoth = cfActive && counterfactualMode!.bothSet.has(nm);
+        const isSelected = selectedNodeFilter?.toLowerCase() === id;
+        const isTraced = highlightedNodes.has(node.id) || highlightedNodes.has(node.name);
 
-    const r = isAlerting ? 15 : kind === 'blast' ? 12.5 : 10.5;
-    ctx.save();
-    ctx.globalAlpha = dim ? 0.18 : 1;
+        const r = isAlerting ? 15 : kind === 'blast' ? 12.5 : 10.5;
+        ctx.save();
+        ctx.globalAlpha = dim ? 0.18 : 1;
 
-    // Outer glow / pulse
-    if (isAlerting) {
-      const t = (performance.now() % 2200) / 2200;
-      ctx.beginPath();
-      ctx.arc(node.x, node.y, r + 6 + t * 22, 0, 2 * Math.PI);
-      ctx.strokeStyle = `rgba(255,59,48,${0.55 * (1 - t)})`;
-      ctx.lineWidth = 2;
-      ctx.stroke();
-    }
-    if (isAlerting || kind === 'blast' || isSelected || isTraced) {
-      const grd = ctx.createRadialGradient(node.x, node.y, r * 0.6, node.x, node.y, r + 14);
-      grd.addColorStop(0, isSelected ? 'rgba(255,255,255,0.35)' : c.glow);
-      grd.addColorStop(1, 'rgba(0,0,0,0)');
-      ctx.beginPath();
-      ctx.arc(node.x, node.y, r + 14, 0, 2 * Math.PI);
-      ctx.fillStyle = grd;
-      ctx.fill();
-    }
+        // Outer glow / pulse
+        if (isAlerting) {
+          const t = (performance.now() % 2200) / 2200;
+          ctx.beginPath();
+          ctx.arc(node.x, node.y, r + 6 + t * 22, 0, 2 * Math.PI);
+          ctx.strokeStyle = `rgba(255,59,48,${0.55 * (1 - t)})`;
+          ctx.lineWidth = 2;
+          ctx.stroke();
+        }
+        if (isAlerting || kind === 'blast' || isSelected || isTraced) {
+          const grd = ctx.createRadialGradient(node.x, node.y, r * 0.6, node.x, node.y, r + 14);
+          grd.addColorStop(0, isSelected ? 'rgba(255,255,255,0.35)' : c.glow);
+          grd.addColorStop(1, 'rgba(0,0,0,0)');
+          ctx.beginPath();
+          ctx.arc(node.x, node.y, r + 14, 0, 2 * Math.PI);
+          ctx.fillStyle = grd;
+          ctx.fill();
+        }
 
-    // Counterfactual rings
-    if (cfObserved || cfHypo || cfBoth) {
-      ctx.beginPath();
-      ctx.arc(node.x, node.y, r + 5, 0, 2 * Math.PI);
-      ctx.strokeStyle = cfBoth ? '#f59e0b' : cfObserved ? '#ef4444' : '#3b82f6';
-      ctx.lineWidth = 2.5;
-      ctx.setLineDash([4, 3]);
-      ctx.stroke();
-      ctx.setLineDash([]);
-    }
+        // Counterfactual rings
+        if (cfObserved || cfHypo || cfBoth) {
+          ctx.beginPath();
+          ctx.arc(node.x, node.y, r + 5, 0, 2 * Math.PI);
+          ctx.strokeStyle = cfBoth ? '#f59e0b' : cfObserved ? '#ef4444' : '#3b82f6';
+          ctx.lineWidth = 2.5;
+          ctx.setLineDash([4, 3]);
+          ctx.stroke();
+          ctx.setLineDash([]);
+        }
 
-    // Body with gradient
-    const body = ctx.createRadialGradient(node.x - r * 0.35, node.y - r * 0.4, 1, node.x, node.y, r);
-    body.addColorStop(0, c.stroke);
-    body.addColorStop(0.45, c.fill);
-    body.addColorStop(1, c.fill);
-    ctx.beginPath();
-    ctx.arc(node.x, node.y, r, 0, 2 * Math.PI);
-    ctx.fillStyle = body;
-    ctx.fill();
-    ctx.lineWidth = isSelected ? 2.6 : 1.4;
-    ctx.strokeStyle = isSelected ? '#ffffff' : c.stroke;
-    ctx.stroke();
+        // Body with gradient
+        const body = ctx.createRadialGradient(node.x - r * 0.35, node.y - r * 0.4, 1, node.x, node.y, r);
+        body.addColorStop(0, c.stroke);
+        body.addColorStop(0.45, c.fill);
+        body.addColorStop(1, c.fill);
+        ctx.beginPath();
+        ctx.arc(node.x, node.y, r, 0, 2 * Math.PI);
+        ctx.fillStyle = body;
+        ctx.fill();
+        ctx.lineWidth = isSelected ? 2.6 : 1.4;
+        ctx.strokeStyle = isSelected ? '#ffffff' : c.stroke;
+        ctx.stroke();
 
-    // Initial glyph
-    ctx.fillStyle = '#ffffff';
-    ctx.font = `800 ${isAlerting ? 12 : 10}px Inter, sans-serif`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(String(nm).charAt(0).toUpperCase(), node.x, node.y + 0.5);
+        // Initial glyph
+        ctx.fillStyle = '#ffffff';
+        ctx.font = `800 ${isAlerting ? 12 : 10}px Inter, sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(String(nm).charAt(0).toUpperCase(), node.x, node.y + 0.5);
 
-    // Hop badge
-    const hop = hops.get(id);
-    if (hop !== undefined && hop > 0 && hop <= 3 && showBlastRadius) {
-      const bx = node.x + r * 0.78;
-      const by = node.y - r * 0.78;
-      ctx.beginPath();
-      ctx.arc(bx, by, 5.6, 0, 2 * Math.PI);
-      ctx.fillStyle = hop === 1 ? '#dc2626' : '#475569';
-      ctx.strokeStyle = isDark ? '#0c0d12' : '#ffffff';
-      ctx.lineWidth = 1.4;
-      ctx.fill();
-      ctx.stroke();
-      ctx.fillStyle = '#fff';
-      ctx.font = '800 7.5px Inter, sans-serif';
-      ctx.fillText(String(hop), bx, by + 0.3);
-    }
+        // Hop badge
+        const hop = hops.get(id);
+        if (hop !== undefined && hop > 0 && hop <= 3 && showBlastRadius) {
+          const bx = node.x + r * 0.78;
+          const by = node.y - r * 0.78;
+          ctx.beginPath();
+          ctx.arc(bx, by, 5.6, 0, 2 * Math.PI);
+          ctx.fillStyle = hop === 1 ? '#dc2626' : '#475569';
+          ctx.strokeStyle = isDark ? '#0c0d12' : '#ffffff';
+          ctx.lineWidth = 1.4;
+          ctx.fill();
+          ctx.stroke();
+          ctx.fillStyle = '#fff';
+          ctx.font = '800 7.5px Inter, sans-serif';
+          ctx.fillText(String(hop), bx, by + 0.3);
+        }
 
-    // 500s pill
-    if (isAlerting) {
-      const tag = '500s';
-      ctx.font = "800 8.5px 'JetBrains Mono', monospace";
-      const tw = ctx.measureText(tag).width + 10;
-      const tx = node.x - tw / 2;
-      const ty = node.y - r - 20;
-      ctx.beginPath();
-      ctx.roundRect(tx, ty, tw, 14, 7);
-      ctx.fillStyle = '#ef4444';
-      ctx.fill();
-      ctx.fillStyle = '#fff';
-      ctx.fillText(tag, node.x, ty + 7.3);
-    }
+        // 500s pill
+        if (isAlerting) {
+          const tag = '500s';
+          ctx.font = "800 8.5px 'JetBrains Mono', monospace";
+          const tw = ctx.measureText(tag).width + 10;
+          const tx = node.x - tw / 2;
+          const ty = node.y - r - 20;
+          ctx.beginPath();
+          if (typeof ctx.roundRect === 'function') {
+            ctx.roundRect(tx, ty, tw, 14, 7);
+          } else {
+            ctx.rect(tx, ty, tw, 14);
+          }
+          ctx.fillStyle = '#ef4444';
+          ctx.fill();
+          ctx.fillStyle = '#fff';
+          ctx.fillText(tag, node.x, ty + 7.3);
+        }
 
-    // Label pill
-    const label = String(nm);
-    const fs = Math.max(9.5, Math.min(12.5, 11.5 / Math.sqrt(globalScale || 1)));
-    ctx.font = `${isAlerting ? 800 : 600} ${fs}px Inter, sans-serif`;
-    const lw = ctx.measureText(label).width + 10;
-    const ly = node.y + r + 5;
-    ctx.beginPath();
-    ctx.roundRect(node.x - lw / 2, ly, lw, fs + 6, 6);
-    ctx.fillStyle = palette.labelBg;
-    ctx.fill();
-    ctx.fillStyle = isAlerting ? '#ff6b4d' : palette.label;
-    ctx.textBaseline = 'middle';
-    ctx.fillText(label, node.x, ly + (fs + 6) / 2 + 0.3);
-    ctx.restore();
-  };
+        // Label pill
+        const label = String(nm);
+        const fs = Math.max(9.5, Math.min(12.5, 11.5 / Math.sqrt(globalScale || 1)));
+        ctx.font = `${isAlerting ? 800 : 600} ${fs}px Inter, sans-serif`;
+        const lw = ctx.measureText(label).width + 10;
+        const ly = node.y + r + 5;
+        ctx.beginPath();
+        if (typeof ctx.roundRect === 'function') {
+          ctx.roundRect(node.x - lw / 2, ly, lw, fs + 6, 6);
+        } else {
+          ctx.rect(node.x - lw / 2, ly, lw, fs + 6);
+        }
+        ctx.fillStyle = palette.labelBg;
+        ctx.fill();
+        ctx.fillStyle = isAlerting ? '#ff6b4d' : palette.label;
+        ctx.textBaseline = 'middle';
+        ctx.fillText(label, node.x, ly + (fs + 6) / 2 + 0.3);
+        ctx.restore();
+      } catch {
+        ctx.restore();
+      }
+    },
+    [
+      classify,
+      hoveredNode,
+      neighbors,
+      counterfactualMode,
+      selectedNodeFilter,
+      highlightedNodes,
+      hops,
+      showBlastRadius,
+      isDark,
+      palette,
+    ]
+  );
 
   const edgeKey = (link: any) => `${link.source?.id || link.source}->${link.target?.id || link.target}`;
   const isLinkFocus = (link: any) => {
@@ -339,6 +396,94 @@ export const GraphCanvas: React.FC<GraphCanvasProps> = ({
   }, [hops]);
 
   const focusDeg = focusNode ? neighbors.get(nid(focusNode))?.size || 0 : 0;
+
+  // Direct ForceGraph instantiation and unmount lifecycle
+  useEffect(() => {
+    if (viewMode !== 'graph' || !canvasContainerRef.current) return;
+    const el = canvasContainerRef.current;
+    el.innerHTML = '';
+
+    const fg = new ForceGraph(el)
+      .width(width)
+      .height(height)
+      .backgroundColor('rgba(0,0,0,0)')
+      .graphData(graphData)
+      .autoPauseRedraw(false)
+      .nodeCanvasObject(paintNode)
+      .nodePointerAreaPaint((node: any, color: string, ctx: CanvasRenderingContext2D) => {
+        if (!node || !Number.isFinite(node.x) || !Number.isFinite(node.y)) return;
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.arc(node.x, node.y, 20, 0, 2 * Math.PI, false);
+        ctx.fill();
+      })
+      .linkColor((link: any) => {
+        if (highlightedEdges.has(edgeKey(link))) return '#ff4d2d';
+        const f = isLinkFocus(link);
+        if (f === true) return '#ff6339';
+        if (f === false) return palette.linkDim;
+        return palette.link;
+      })
+      .linkWidth((link: any) => (highlightedEdges.has(edgeKey(link)) ? 2.8 : isLinkFocus(link) ? 2 : 1.1))
+      .linkCurvature(0.12)
+      .linkDirectionalArrowLength(5)
+      .linkDirectionalArrowRelPos(0.9)
+      .linkDirectionalArrowColor((link: any) => (highlightedEdges.has(edgeKey(link)) ? '#ff4d2d' : palette.link))
+      .linkDirectionalParticles((link: any) => (highlightedEdges.has(edgeKey(link)) ? 4 : isLinkFocus(link) ? 2 : 0))
+      .linkDirectionalParticleSpeed(0.008)
+      .linkDirectionalParticleWidth(2.8)
+      .linkDirectionalParticleColor(() => '#ff8a5c')
+      .onNodeClick(handleNodeClick)
+      .onNodeHover((node: any) => setHoveredNode(node || null))
+      .onBackgroundClick(() => setFocusNode(null))
+      .warmupTicks(60)
+      .cooldownTicks(150);
+
+    // Spread layout forces
+    fg.d3Force('charge')?.strength(-520).distanceMax(520);
+    fg.d3Force('link')?.distance(120).strength(0.5);
+    fg.d3Force('center')?.strength?.(0.05);
+
+    fgRef.current = fg;
+
+    // Initial zoom-to-fit once simulation has initial coordinates
+    const timer = setTimeout(() => {
+      fg.zoomToFit(400, 60);
+    }, 150);
+
+    return () => {
+      clearTimeout(timer);
+      try {
+        fg._destructor?.();
+      } catch (e) {
+        console.warn('ForceGraph destructor error:', e);
+      }
+      fgRef.current = null;
+      el.innerHTML = '';
+    };
+  }, [viewMode]);
+
+  // Handle container resize
+  useEffect(() => {
+    if (fgRef.current) {
+      fgRef.current.width(width).height(height);
+    }
+  }, [width, height]);
+
+  // Handle data or visual state updates
+  useEffect(() => {
+    if (!fgRef.current) return;
+    fgRef.current
+      .graphData(graphData)
+      .nodeCanvasObject(paintNode)
+      .linkColor((link: any) => {
+        if (highlightedEdges.has(edgeKey(link))) return '#ff4d2d';
+        const f = isLinkFocus(link);
+        if (f === true) return '#ff6339';
+        if (f === false) return palette.linkDim;
+        return palette.link;
+      });
+  }, [graphData, paintNode, highlightedEdges, palette]);
 
   return (
     <div className="surface flex flex-col overflow-hidden anim-fade-up" style={{ ['--i' as string]: 2 }}>
@@ -479,48 +624,7 @@ export const GraphCanvas: React.FC<GraphCanvasProps> = ({
               </div>
             )}
 
-            <ForceGraph2D
-              ref={fgRef}
-              width={width}
-              height={height}
-              backgroundColor="rgba(0,0,0,0)"
-              graphData={graphData}
-              autoPauseRedraw={false}
-              nodeCanvasObject={paintNode}
-              nodePointerAreaPaint={(node: any, color: string, ctx: CanvasRenderingContext2D) => {
-                ctx.fillStyle = color;
-                ctx.beginPath();
-                ctx.arc(node.x, node.y, 20, 0, 2 * Math.PI, false);
-                ctx.fill();
-              }}
-              linkColor={(link: any) => {
-                if (highlightedEdges.has(edgeKey(link))) return '#ff4d2d';
-                const f = isLinkFocus(link);
-                if (f === true) return '#ff6339';
-                if (f === false) return palette.linkDim;
-                return palette.link;
-              }}
-              linkWidth={(link: any) => (highlightedEdges.has(edgeKey(link)) ? 2.8 : isLinkFocus(link) ? 2 : 1.1)}
-              linkCurvature={0.12}
-              linkDirectionalArrowLength={5}
-              linkDirectionalArrowRelPos={0.9}
-              linkDirectionalArrowColor={(link: any) => (highlightedEdges.has(edgeKey(link)) ? '#ff4d2d' : palette.link)}
-              linkDirectionalParticles={(link: any) => (highlightedEdges.has(edgeKey(link)) ? 4 : isLinkFocus(link) ? 2 : 0)}
-              linkDirectionalParticleSpeed={0.008}
-              linkDirectionalParticleWidth={2.8}
-              linkDirectionalParticleColor={() => '#ff8a5c'}
-              onNodeClick={handleNodeClick}
-              onNodeHover={(node: any) => setHoveredNode(node || null)}
-              onBackgroundClick={() => setFocusNode(null)}
-              warmupTicks={80}
-              cooldownTicks={200}
-              onEngineStop={() => {
-                if (!fitted.current && fgRef.current) {
-                  fitted.current = true;
-                  fgRef.current.zoomToFit(600, 70);
-                }
-              }}
-            />
+            <div ref={canvasContainerRef} className="w-full h-full relative" />
           </>
         ) : (
           <div className="absolute inset-0 overflow-y-auto p-4">

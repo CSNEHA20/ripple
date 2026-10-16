@@ -87,7 +87,7 @@ export default function App() {
   const [tenant, setTenant] = useState<string>('storefront');
   const [mode, setMode] = useState<'replay' | 'live'>('replay');
   const [healthOk, setHealthOk] = useState<boolean>(true);
-  const [viewMode, setViewMode] = useState<'3d' | 'graph' | 'list'>('3d');
+  const [viewMode, setViewMode] = useState<'3d' | 'graph' | 'list'>('graph');
   const [activeSubTab, setActiveSubTab] = useState<'system' | 'timeline' | 'hypotheses' | 'evidence' | 'runbook' | 'counterfactuals'>('system');
 
   // Scenarios & Alert Selection
@@ -203,7 +203,7 @@ export default function App() {
   const handleChangeViewMode = (mode: '3d' | 'graph' | 'list') => {
     setViewMode(mode);
     const nextParams = new URLSearchParams(searchParams);
-    if (mode === '3d') {
+    if (mode === 'graph') {
       nextParams.delete('view');
     } else {
       nextParams.set('view', mode);
@@ -232,8 +232,13 @@ export default function App() {
     setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'));
   };
 
+  const mainContentRef = useRef<HTMLDivElement>(null);
+
   // Scroll to top whenever the view changes
   useEffect(() => {
+    if (mainContentRef.current) {
+      mainContentRef.current.scrollTo({ top: 0, behavior: 'smooth' });
+    }
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }, [activeTab]);
 
@@ -563,7 +568,7 @@ export default function App() {
       />
 
       {/* 2. Main Workspace Layout */}
-      <div className="ripple-main-content">
+      <div className="ripple-main-content" ref={mainContentRef}>
         {/* Top Header Bar */}
         <TopNav
           theme={theme}
