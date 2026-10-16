@@ -1,0 +1,7 @@
+{
+  "incident_id": "inc_fa91f095",
+  "observed_outcome": "failed",
+  "metrics_summary": "Post-intervention check on emailservice: Intervention 'Rollback Recent Deployment' FAILED to resolve the incident. Underlying root cause 'worker_exhaustion' on 'emailservice' was not addressed.",
+  "summary": "Verifier confirmed failed outcome for rb_rollback [hyp_inc_fa91f095_emailservice].",
+  "resolution_confirmed": false
+}

@@ -1,0 +1,7 @@
+{
+  "incident_id": "inc_e2f52444",
+  "observed_outcome": "failed",
+  "metrics_summary": "Post-intervention check on cartservice: Intervention 'Rollback Recent Deployment' FAILED to resolve the incident. Underlying root cause 'traffic_flood' on 'loadgenerator' was not addressed.",
+  "summary": "Verifier confirmed failed outcome for rb_rollback [hyp_inc_e2f52444_cartservice].",
+  "resolution_confirmed": false
+}

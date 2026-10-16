@@ -1,0 +1,12 @@
+{
+  "top_cause": "Internal defect or regression in alerting service 'productcatalogservice' (alerting_service, past_incident_affected, recent_deployment).",
+  "top_service": "productcatalogservice",
+  "evidence_score": 7.6,
+  "margin": 7.6,
+  "summary": "Investigator ranked root cause as 'productcatalogservice' with evidence score 7.60 and margin 7.60 [ev_hyp_inc_41667cce_productcatalogservice_dependency_path_support_1].",
+  "cited_evidence_ids": [
+    "ev_hyp_inc_41667cce_productcatalogservice_dependency_path_support_1",
+    "ev_hyp_inc_41667cce_productcatalogservice_recent_deploy_support_2",
+    "ev_hyp_inc_41667cce_productcatalogservice_past_incident_support_3"
+  ]
+}

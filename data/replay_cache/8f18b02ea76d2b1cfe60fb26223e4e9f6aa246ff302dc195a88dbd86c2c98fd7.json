@@ -1,0 +1,10 @@
+{
+  "alerting_service": "frontend",
+  "severity": "P2",
+  "blast_radius_count": 1,
+  "impacted_services": [
+    "loadgenerator"
+  ],
+  "summary": "Triage assessed alert on 'frontend'. Blast radius: 1 downstream service(s) [loadgenerator]. Assigned severity P2 (recalled inc_529bec48). (Citations: [inc_frontend], [inc_529bec48])",
+  "suggested_focus": "Investigate upstream dependencies and recent changes affecting 'frontend'."
+}

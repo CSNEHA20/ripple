@@ -1,0 +1,12 @@
+{
+  "top_cause": "Internal defect or regression in alerting service 'frontend' (alerting_service, past_incident_affected, recent_deployment).",
+  "top_service": "frontend",
+  "evidence_score": 5.94,
+  "margin": 6.64,
+  "summary": "Investigator ranked root cause as 'frontend' with evidence score 5.94 and margin 6.64 [ev_hyp_inc_e3218807_frontend_dependency_path_support_1].",
+  "cited_evidence_ids": [
+    "ev_hyp_inc_e3218807_frontend_dependency_path_support_1",
+    "ev_hyp_inc_e3218807_frontend_recent_deploy_support_2",
+    "ev_hyp_inc_e3218807_frontend_past_incident_support_3"
+  ]
+}

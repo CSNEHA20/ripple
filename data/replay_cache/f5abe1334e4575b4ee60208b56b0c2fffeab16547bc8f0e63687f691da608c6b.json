@@ -1,0 +1,11 @@
+{
+  "alerting_service": "checkoutservice (Citations: [inc_checkoutservice], [inc_a30a3a93])",
+  "severity": "P2",
+  "blast_radius_count": 2,
+  "impacted_services": [
+    "frontend",
+    "loadgenerator"
+  ],
+  "summary": "Triage assessed alert on 'checkoutservice'. Blast radius: 2 downstream service(s) [frontend, loadgenerator]. Assigned severity P2 (recalled inc_a30a3a93).",
+  "suggested_focus": "Investigate upstream dependencies and recent changes affecting 'checkoutservice'."
+}

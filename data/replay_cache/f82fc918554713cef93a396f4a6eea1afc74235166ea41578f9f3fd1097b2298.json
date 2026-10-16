@@ -1,0 +1,11 @@
+{
+  "top_cause": "Internal defect or regression in alerting service 'recommendationservice' (alerting_service).",
+  "top_service": "recommendationservice",
+  "evidence_score": 1.5,
+  "margin": 0.18,
+  "summary": "Investigator ranked root cause as 'recommendationservice' with evidence score 1.50 and margin 0.18 [ev_hyp_inc_6aa5c794_recommendationservice_dependency_path_support_1].",
+  "cited_evidence_ids": [
+    "ev_hyp_inc_6aa5c794_recommendationservice_dependency_path_support_1",
+    "hyp_inc_6aa5c794_recommendationservice"
+  ]
+}

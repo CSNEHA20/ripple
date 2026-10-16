@@ -1,0 +1,7 @@
+{
+  "incident_id": "inc_0974402b",
+  "observed_outcome": "failed",
+  "metrics_summary": "Post-intervention check on currencyservice: Intervention 'Rollback Recent Deployment' FAILED to resolve the incident. Underlying root cause 'upstream_timeout' on 'currencyservice' was not addressed.",
+  "summary": "Verifier confirmed failed outcome for rb_rollback [hyp_inc_0974402b_currencyservice].",
+  "resolution_confirmed": false
+}

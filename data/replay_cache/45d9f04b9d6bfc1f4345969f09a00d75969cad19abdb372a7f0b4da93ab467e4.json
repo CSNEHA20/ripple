@@ -1,0 +1,7 @@
+{
+  "incident_id": "inc_5ae14876",
+  "observed_outcome": "failed",
+  "metrics_summary": "Post-intervention check on paymentservice: Intervention 'Rollback Recent Deployment' FAILED to resolve the incident. Underlying root cause 'resource_exhaustion' on 'checkoutservice' was not addressed.",
+  "summary": "Verifier confirmed failed outcome for rb_rollback [hyp_inc_5ae14876_paymentservice].",
+  "resolution_confirmed": false
+}

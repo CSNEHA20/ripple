@@ -1,0 +1,7 @@
+{
+  "incident_id": "inc_f2f5912b",
+  "observed_outcome": "failed",
+  "metrics_summary": "Post-intervention check on adservice: Intervention 'Rollback Recent Deployment' FAILED to resolve the incident. Underlying root cause 'thread_deadlock' on 'adservice' was not addressed.",
+  "summary": "Verifier confirmed failed outcome for rb_rollback [hyp_inc_f2f5912b_adservice].",
+  "resolution_confirmed": false
+}

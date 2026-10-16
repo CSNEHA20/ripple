@@ -1,0 +1,7 @@
+{
+  "incident_id": "inc_caa91141",
+  "observed_outcome": "failed",
+  "metrics_summary": "Post-intervention check on shippingservice: Intervention 'Rollback Recent Deployment' FAILED to resolve the incident. Underlying root cause 'upstream_timeout' on 'shippingservice' was not addressed.",
+  "summary": "Verifier confirmed failed outcome for rb_rollback [hyp_inc_caa91141_shippingservice].",
+  "resolution_confirmed": false
+}

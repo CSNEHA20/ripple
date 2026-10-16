@@ -1,0 +1,13 @@
+{
+  "intent": "lineage",
+  "summary_answer": "Found architectural decisions: dec_grpc_standard: Standardize all inter-service communications on gRPC with proto3 and keep-alive pings enabled. | dec_payment_circuit_breaker: Introduce 2.5-second client timeout and circuit breaking on paymentservice calls from checkoutservice. [dec_grpc_standard]. (Citations: [dec_grpc_standard], [dec_payment_circuit_breaker])",
+  "detailed_answer": "Found architectural decisions: dec_grpc_standard: Standardize all inter-service communications on gRPC with proto3 and keep-alive pings enabled. | dec_payment_circuit_breaker: Introduce 2.5-second client timeout and circuit breaking on paymentservice calls from checkoutservice. [dec_grpc_standard].",
+  "cited_node_ids": [
+    "dec_grpc_standard",
+    "dec_payment_circuit_breaker",
+    "dec_email_async_queue",
+    "dec_tracing_opentelemetry"
+  ],
+  "is_superseded": false,
+  "is_stale": false
+}
