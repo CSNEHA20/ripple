@@ -1,17 +1,18 @@
 /* ==========================================================================
-   Ripple Cinematic 3D System View Styles
-   Industrial modular service stations, glowing conduits, and HUD telemetry.
+   Ripple Production-Grade 3D Incident Investigation Visualization
+   Theme: Warm charcoal, muted stone, cream, restrained burnt-orange.
+   Design Reference: Engineering simulation, Claude-like typography hierarchy.
    ========================================================================== */
 
 .system-scene-wrapper {
   position: relative;
   width: 100%;
-  height: 580px;
-  background: radial-gradient(circle at 50% 45%, #151512 0%, #0b0b0a 75%);
+  height: 590px;
+  background: radial-gradient(circle at 50% 40%, #151412 0%, #0b0b0a 80%);
   border: 1px solid #2a2925;
-  border-radius: 18px;
+  border-radius: 16px;
   overflow: hidden;
-  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.8), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.75), inset 0 1px 0 rgba(245, 241, 232, 0.04);
 }
 
 .system-scene-canvas {
@@ -27,143 +28,192 @@
 }
 
 /* ==========================================================================
-   Top-Left Live System Telemetry HUD
+   Top HUD Bar: Mode Selector & Telemetry
    ========================================================================== */
 
-.scene-hud-top-left {
+.scene-hud-top-bar {
   position: absolute;
-  top: 18px;
-  left: 20px;
-  z-index: 10;
+  top: 16px;
+  left: 18px;
+  right: 18px;
   display: flex;
-  flex-direction: column;
-  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  z-index: 10;
   pointer-events: none;
 }
 
-.scene-hud-badge-row {
+.scene-hud-left {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 14px;
+  pointer-events: auto;
 }
 
-.scene-live-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background-color: #35c98a;
-  box-shadow: 0 0 10px #35c98a;
-  animation: scene-pulse 2s infinite ease-in-out;
-}
-
-.scene-live-text {
-  font-family: var(--font-sans);
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.14em;
-  color: #f5f1e8;
-  text-transform: uppercase;
-}
-
-.scene-counts-text {
-  font-size: 12px;
-  color: #a6a197;
-  font-weight: 500;
-}
-
-.scene-metrics-row {
-  display: flex;
+.scene-mode-selector {
+  display: inline-flex;
   align-items: center;
-  gap: 20px;
-}
-
-.scene-metric-item {
-  display: flex;
-  flex-direction: column;
+  background: rgba(17, 17, 15, 0.9);
+  border: 1px solid #2a2925;
+  border-radius: 9px;
+  padding: 3px;
   gap: 3px;
+  backdrop-filter: blur(12px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
 }
 
-.scene-metric-label {
-  font-size: 10.5px;
-  font-weight: 600;
-  color: #706e67;
-  letter-spacing: 0.02em;
-}
-
-.scene-metric-val-wrap {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.scene-metric-val {
-  font-family: var(--font-mono);
-  font-size: 15px;
-  font-weight: 700;
-  color: #f5f1e8;
-}
-
-.scene-metric-val.error {
-  color: #ff453a;
-}
-
-.scene-sparkline {
-  width: 48px;
-  height: 16px;
-  overflow: visible;
-}
-
-/* ==========================================================================
-   Top-Right HUD Scene Controls
-   ========================================================================== */
-
-.scene-hud-top-right {
-  position: absolute;
-  top: 18px;
-  right: 20px;
-  z-index: 10;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.scene-ctrl-btn {
+.scene-mode-btn {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 6px 12px;
-  border-radius: 8px;
-  background-color: rgba(23, 23, 20, 0.85);
-  border: 1px solid #2a2925;
+  padding: 5px 11px;
+  border-radius: 6px;
+  background: transparent;
+  border: none;
   color: #a6a197;
-  font-size: 12px;
+  font-size: 11.5px;
   font-weight: 600;
-  backdrop-filter: blur(8px);
   cursor: pointer;
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
   user-select: none;
 }
 
-.scene-ctrl-btn:hover {
-  background-color: #1e1e1a;
-  border-color: #383630;
+.scene-mode-btn:hover {
   color: #f5f1e8;
+  background: rgba(255, 255, 255, 0.04);
 }
 
-.scene-ctrl-btn.active {
-  background-color: rgba(255, 100, 45, 0.16);
-  border-color: rgba(255, 100, 45, 0.5);
+.scene-mode-btn.active {
+  background: #ff642d;
+  color: #0b0b0a;
+  font-weight: 700;
+  box-shadow: 0 0 12px rgba(255, 100, 45, 0.35);
+}
+
+.scene-hud-counts {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(17, 17, 15, 0.85);
+  border: 1px solid #2a2925;
+  border-radius: 8px;
+  padding: 5px 10px;
+  font-size: 11px;
+  color: #a6a197;
+  backdrop-filter: blur(8px);
+}
+
+.scene-pulse-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #35c98a;
+  box-shadow: 0 0 8px #35c98a;
+}
+
+.scene-pulse-dot.error {
+  background: #ff453a;
+  box-shadow: 0 0 8px #ff453a;
+}
+
+/* Right HUD Controls */
+.scene-hud-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  pointer-events: auto;
+}
+
+.scene-action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border-radius: 7px;
+  background: rgba(17, 17, 15, 0.88);
+  border: 1px solid #2a2925;
+  color: #a6a197;
+  font-size: 11.5px;
+  font-weight: 600;
+  backdrop-filter: blur(8px);
+  cursor: pointer;
+  transition: all 0.18s ease;
+  user-select: none;
+}
+
+.scene-action-btn:hover {
+  background: #1e1e1a;
+  color: #f5f1e8;
+  border-color: #383630;
+}
+
+.scene-action-btn.active {
+  background: rgba(255, 100, 45, 0.14);
+  border-color: rgba(255, 100, 45, 0.45);
   color: #ff642d;
-  box-shadow: 0 0 16px rgba(255, 100, 45, 0.2);
 }
 
-.scene-ctrl-btn:focus-visible {
+.scene-action-btn:focus-visible {
   outline: none;
   box-shadow: 0 0 0 2px #ff642d;
 }
 
 /* ==========================================================================
-   Floating Service Tooltip on Raycast Hover
+   Bottom Telemetry Legend
+   ========================================================================== */
+
+.scene-hud-legend {
+  position: absolute;
+  top: 60px;
+  left: 18px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  background: rgba(17, 17, 15, 0.88);
+  border: 1px solid #2a2925;
+  border-radius: 8px;
+  padding: 5px 12px;
+  font-size: 11px;
+  color: #a6a197;
+  backdrop-filter: blur(8px);
+  z-index: 10;
+  pointer-events: none;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.legend-swatch {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+}
+
+.legend-swatch.critical {
+  background: #ff453a;
+  box-shadow: 0 0 6px rgba(255, 69, 58, 0.6);
+}
+
+.legend-swatch.warning {
+  background: #f5a623;
+  box-shadow: 0 0 6px rgba(245, 166, 35, 0.6);
+}
+
+.legend-swatch.healthy {
+  background: #35c98a;
+  box-shadow: 0 0 6px rgba(53, 201, 138, 0.5);
+}
+
+.legend-swatch.muted {
+  background: #54524c;
+}
+
+/* ==========================================================================
+   Floating Hover Tooltip
    ========================================================================== */
 
 .scene-service-tooltip {
@@ -171,118 +221,276 @@
   z-index: 25;
   pointer-events: none;
   transform: translate(-50%, -115%);
-  background: rgba(17, 17, 15, 0.94);
+  background: rgba(17, 17, 15, 0.95);
   border: 1px solid #2a2925;
-  border-radius: 12px;
-  padding: 12px 14px;
-  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.85), 0 0 24px rgba(255, 100, 45, 0.18);
-  backdrop-filter: blur(12px);
-  min-width: 210px;
-  transition: opacity 0.15s ease;
-  animation: scene-pop 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  border-radius: 10px;
+  padding: 10px 13px;
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.8), 0 0 20px rgba(255, 100, 45, 0.15);
+  backdrop-filter: blur(10px);
+  min-width: 195px;
+  animation: scene-tooltip-in 0.18s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.scene-tooltip-header {
+.tooltip-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
-  margin-bottom: 8px;
-  padding-bottom: 6px;
+  gap: 8px;
+  margin-bottom: 6px;
+  padding-bottom: 5px;
   border-bottom: 1px solid rgba(245, 241, 232, 0.08);
 }
 
-.scene-tooltip-title {
-  font-size: 13.5px;
+.tooltip-name {
+  font-size: 13px;
+  font-weight: 700;
+  color: #f5f1e8;
+}
+
+.tooltip-tier {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  color: #706e67;
+  text-transform: uppercase;
+}
+
+.tooltip-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11px;
+  color: #a6a197;
+}
+
+.tooltip-row {
+  display: flex;
+  justify-content: space-between;
+}
+
+.tooltip-row strong {
+  font-family: var(--font-mono);
+  color: #f5f1e8;
+}
+
+.tooltip-hint {
+  margin-top: 5px;
+  padding-top: 4px;
+  border-top: 1px dashed rgba(245, 241, 232, 0.06);
+  font-size: 10px;
+  color: #ff642d;
+  text-align: center;
+}
+
+/* ==========================================================================
+   Dedicated Service Inspection Drawer (Docked inside 3D scene)
+   ========================================================================== */
+
+.scene-inspector-drawer {
+  position: absolute;
+  top: 60px;
+  right: 18px;
+  bottom: 18px;
+  width: 320px;
+  background: rgba(20, 20, 18, 0.94);
+  border: 1px solid #2a2925;
+  border-radius: 14px;
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  z-index: 20;
+  backdrop-filter: blur(14px);
+  box-shadow: -8px 0 32px rgba(0, 0, 0, 0.7);
+  overflow-y: auto;
+  animation: scene-drawer-slide 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.inspector-drawer-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 10px;
+  border-bottom: 1px solid rgba(245, 241, 232, 0.08);
+}
+
+.inspector-title-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.inspector-title {
+  font-size: 15px;
   font-weight: 700;
   color: #f5f1e8;
   letter-spacing: -0.01em;
 }
 
-.scene-tooltip-badge {
+.inspector-badge {
   font-family: var(--font-mono);
   font-size: 10px;
   font-weight: 700;
   padding: 2px 6px;
-  border-radius: 5px;
+  border-radius: 4px;
   text-transform: uppercase;
 }
 
-.scene-tooltip-badge.red {
+.inspector-badge.critical {
   background: rgba(255, 69, 58, 0.18);
   border: 1px solid rgba(255, 69, 58, 0.45);
   color: #ff453a;
 }
 
-.scene-tooltip-badge.amber {
+.inspector-badge.warning {
   background: rgba(245, 166, 35, 0.18);
   border: 1px solid rgba(245, 166, 35, 0.45);
   color: #f5a623;
 }
 
-.scene-tooltip-badge.green {
+.inspector-badge.healthy {
   background: rgba(53, 201, 138, 0.18);
   border: 1px solid rgba(53, 201, 138, 0.45);
   color: #35c98a;
 }
 
-.scene-tooltip-body {
+.inspector-close-btn {
+  background: #171714;
+  border: 1px solid #2a2925;
+  color: #a6a197;
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.inspector-close-btn:hover {
+  color: #f5f1e8;
+  border-color: #383630;
+}
+
+/* Metrics Box */
+.inspector-metrics-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.inspector-metric-card {
+  background: #141412;
+  border: 1px solid #2a2925;
+  border-radius: 8px;
+  padding: 8px 10px;
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  font-size: 11.5px;
-  color: #a6a197;
+  gap: 2px;
 }
 
-.scene-tooltip-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
+.inspector-metric-label {
+  font-size: 10px;
+  color: #706e67;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
 }
 
-.scene-tooltip-row strong {
+.inspector-metric-value {
   font-family: var(--font-mono);
+  font-size: 13.5px;
+  font-weight: 700;
   color: #f5f1e8;
 }
 
-/* Fallback message if WebGL unavailable */
-.scene-webgl-fallback {
-  position: absolute;
-  inset: 0;
+.inspector-metric-value.critical {
+  color: #ff453a;
+}
+
+.inspector-metric-value.warning {
+  color: #f5a623;
+}
+
+/* Dependency Sections */
+.inspector-section-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #706e67;
+  margin-top: 4px;
+}
+
+.inspector-chips-wrap {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.inspector-dep-chip {
+  background: #171714;
+  border: 1px solid #2a2925;
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 11.5px;
+  color: #a6a197;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.inspector-dep-chip:hover {
+  background: #201f1b;
+  color: #f5f1e8;
+  border-color: rgba(255, 100, 45, 0.4);
+}
+
+.inspector-action-btn-row {
   display: flex;
   flex-direction: column;
+  gap: 6px;
+  margin-top: auto;
+  padding-top: 10px;
+  border-top: 1px solid rgba(245, 241, 232, 0.08);
+}
+
+.inspector-btn {
+  width: 100%;
+  padding: 7px 12px;
+  border-radius: 7px;
+  background: rgba(255, 100, 45, 0.12);
+  border: 1px solid rgba(255, 100, 45, 0.35);
+  color: #ff642d;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.18s ease;
+  display: flex;
   align-items: center;
   justify-content: center;
-  padding: 24px;
-  text-align: center;
-  color: #a6a197;
-  gap: 12px;
+  gap: 6px;
 }
 
-@keyframes scene-pulse {
-  0%, 100% { opacity: 0.8; transform: scale(0.95); }
-  50% { opacity: 1; transform: scale(1.15); box-shadow: 0 0 14px #35c98a; }
+.inspector-btn:hover {
+  background: rgba(255, 100, 45, 0.22);
+  color: #ff7847;
 }
 
-@keyframes scene-pop {
-  from { opacity: 0; transform: translate(-50%, -105%) scale(0.95); }
+@keyframes scene-tooltip-in {
+  from { opacity: 0; transform: translate(-50%, -105%) scale(0.96); }
   to { opacity: 1; transform: translate(-50%, -115%) scale(1); }
 }
 
-@media (max-width: 1024px) {
-  .system-scene-wrapper {
-    height: 480px;
-  }
-  .scene-metrics-row {
-    display: none;
-  }
+@keyframes scene-drawer-slide {
+  from { opacity: 0; transform: translateX(20px); }
+  to { opacity: 1; transform: translateX(0); }
 }
 
-@media (max-width: 768px) {
-  .system-scene-wrapper {
-    height: 380px;
+@media (max-width: 900px) {
+  .scene-inspector-drawer {
+    width: 280px;
   }
-  .scene-ctrl-btn span {
+  .scene-hud-counts {
     display: none;
   }
 }

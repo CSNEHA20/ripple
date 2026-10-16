@@ -38,6 +38,7 @@ export const IncidentFlowPanel: React.FC<IncidentFlowPanelProps> = ({
           <div className="flow-tree-content">
             <div className="flow-service-name">paymentservice</div>
             <div className="flow-service-sub">500s · 68% error rate</div>
+            <div className="flow-service-meta">Root cause (suspected)</div>
           </div>
         </div>
 
@@ -58,6 +59,7 @@ export const IncidentFlowPanel: React.FC<IncidentFlowPanelProps> = ({
           <div className="flow-tree-content">
             <div className="flow-service-name">checkoutservice</div>
             <div className="flow-service-sub">High latency (1.8s)</div>
+            <div className="flow-service-meta">Directly affected</div>
           </div>
         </div>
 
@@ -78,6 +80,7 @@ export const IncidentFlowPanel: React.FC<IncidentFlowPanelProps> = ({
           <div className="flow-tree-content">
             <div className="flow-service-name">currencyservice</div>
             <div className="flow-service-sub">Increased latency (320ms)</div>
+            <div className="flow-service-meta">Downstream impact</div>
           </div>
         </div>
 
@@ -93,8 +96,8 @@ export const IncidentFlowPanel: React.FC<IncidentFlowPanelProps> = ({
         >
           <div className="flow-tree-indicator hollow" />
           <div className="flow-tree-content">
-            <div className="flow-service-name">4 downstream services</div>
-            <div className="flow-service-sub">impacted in blast radius</div>
+            <div className="flow-service-name">4 more services</div>
+            <div className="flow-service-sub">Impacted in blast radius</div>
           </div>
         </div>
       </div>

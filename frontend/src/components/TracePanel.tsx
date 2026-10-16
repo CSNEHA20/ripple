@@ -44,7 +44,7 @@ const DEFAULT_SPANS: TraceSpan[] = [
     annotation: 'High latency',
     percent: 64,
   },
-  { id: 'span_6', idx: 6, service: 'currencyservice', duration: '320ms', durationMs: 320, status: 'ok', percent: 22 },
+  { id: 'span_6', idx: 6, service: 'currencyservice', duration: '320ms', durationMs: 320, status: 'warning', percent: 28 },
 ];
 
 export const TracePanel: React.FC<TracePanelProps> = ({

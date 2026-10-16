@@ -547,6 +547,7 @@ export default function App() {
                           alertingService={customService}
                           selectedNodeFilter={selectedNodeFilter}
                           onSelectNode={handleSelectGraphNode}
+                          onOpenInspector={() => setIsInspectorOpen(true)}
                           height={580}
                         />
                       )}

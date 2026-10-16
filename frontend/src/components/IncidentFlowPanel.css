@@ -125,6 +125,12 @@
   font-family: var(--font-mono);
 }
 
+.flow-service-meta {
+  font-size: 10.5px;
+  color: #706e67;
+  margin-top: 1px;
+}
+
 .flow-tree-connector {
   width: 2px;
   height: 14px;
