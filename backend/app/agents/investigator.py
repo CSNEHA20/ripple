@@ -1,0 +1,237 @@
+import logging
+import time
+from typing import Any
+from pydantic import BaseModel, Field
+from app.tenancy import TenantGraph
+from app.trace import Trace
+from app.hypotheses.engine import run_investigation
+from app.tools.changes import recent_changes
+from app.agents.blackboard import (
+    create_agent_run,
+    complete_agent_run,
+    create_task,
+    update_task_status,
+    record_agent_observation,
+)
+from app.agents.conflicts import (
+    flag_conflict,
+    create_evidence_request_task,
+    resolve_conflict,
+    check_margin_conflict,
+)
+from app.agents.llm import LLMWrapper
+
+logger = logging.getLogger("ripple.agents.investigator")
+
+
+class InvestigatorOutputSchema(BaseModel):
+    top_cause: str
+    top_service: str
+    evidence_score: float
+    margin: float
+    summary: str
+    cited_evidence_ids: list[str] = Field(default_factory=list)
+
+
+class InvestigatorAgent:
+    """Investigator Agent:
+    - Picks up the 'investigate' Task.
+    - Drives the M5 Hypothesis & Evidence Engine over FalkorDB.
+    - Attaches Hypothesis and Evidence nodes with SUPPORTED_BY and CONTRADICTED_BY links.
+    - Evaluates evidence sufficiency and margin thresholds.
+    - If ambiguous/insufficient:
+        1. Flags a Conflict involving competing hypotheses.
+        2. Creates an 'evidence_request' Task (REQUESTS_EVIDENCE_FOR hypothesis).
+        3. Gathers discriminatory probes to resolve ambiguity.
+        4. Closes Conflict (RESOLVED_BY task).
+    - Writes an inferred Observation on the blackboard.
+    - Handoffs to Responder via 'respond' Task.
+    """
+
+    def __init__(self, mode: str = "replay"):
+        self.agent_name = "Investigator"
+        self.role = "investigator"
+        self.llm = LLMWrapper(mode=mode)
+
+    def run(
+        self,
+        graph: TenantGraph,
+        incident_id: str,
+        investigate_task: dict[str, Any],
+        as_of: float | None = None,
+    ) -> tuple[dict[str, Any], Trace]:
+        trace = Trace()
+        ref_ts = as_of if as_of is not None else time.time()
+        payload = investigate_task.get("payload", {})
+        alerting_service = payload.get("alerting_service", "unknown")
+        alert_text = payload.get("alert_text", "")
+        task_id = investigate_task.get("id")
+
+        # 1. Start Investigator AgentRun on blackboard
+        agent_run = create_agent_run(
+            graph=graph,
+            agent_name=self.agent_name,
+            incident_id=incident_id,
+            role=self.role,
+            started_ts=ref_ts,
+        )
+
+        # Update incoming task status to in_progress
+        if task_id:
+            update_task_status(graph, task_id, "in_progress")
+
+        # 2. Run M5 Hypothesis & Evidence Engine
+        inv_result, inv_trace = run_investigation(
+            graph=graph,
+            alerting_service=alerting_service,
+            alert_text=alert_text,
+            as_of=ref_ts,
+            incident_id=incident_id,
+            persist=True,
+        )
+        trace.merge(inv_trace)
+
+        scored_hyps = inv_result.get("hypotheses", [])
+        top_hyp = inv_result.get("top_hypothesis") or (scored_hyps[0] if scored_hyps else None)
+        is_sufficient = inv_result.get("is_sufficient", True)
+
+        # 3. Check for Conflicts and Evidence Requests
+        has_margin_conflict, margin_reason, involved_hyps = check_margin_conflict(scored_hyps)
+        conflict_record = None
+        ev_task_record = None
+
+        if not is_sufficient or has_margin_conflict:
+            # Step 3a: Flag Conflict on blackboard
+            reason = margin_reason if has_margin_conflict else inv_result.get("reason", "Insufficient evidence for diagnosis")
+            conflict_record = flag_conflict(
+                graph=graph,
+                incident_id=incident_id,
+                agent_run_id=agent_run["id"],
+                reason=reason,
+                involves_node_ids=involved_hyps or ([top_hyp["id"]] if top_hyp else []),
+            )
+
+            # Step 3b: Create evidence_request Task
+            req_info = inv_result.get("evidence_request") or {}
+            probes = req_info.get("required_probes") or [
+                f"Verify deployment logs and error rates for {top_hyp.get('service', alerting_service) if top_hyp else alerting_service}"
+            ]
+            competing = req_info.get("competing_services") or [h.get("service") for h in scored_hyps[:2]]
+
+            ev_task_record = create_evidence_request_task(
+                graph=graph,
+                incident_id=incident_id,
+                agent_run_id=agent_run["id"],
+                hypothesis_id=top_hyp["id"] if top_hyp else "",
+                required_probes=probes,
+                competing_services=competing,
+                conflict_id=conflict_record["id"],
+            )
+
+            # Step 3c: Execute targeted discriminatory probes
+            for comp_svc in competing:
+                chg_res = recent_changes(graph, service=comp_svc, hours=12.0, as_of=ref_ts)
+                if hasattr(chg_res, "trace"):
+                    trace.merge(chg_res.trace)
+
+            # Step 3d: Resolve Conflict
+            update_task_status(graph, ev_task_record["id"], "completed", {"probes_executed": len(probes)})
+            resolve_conflict(graph, conflict_record["id"], resolving_task_id=ev_task_record["id"])
+
+        # 4. LLM synthesis of top hypothesis and cited evidence
+        valid_ev_ids = []
+        if top_hyp:
+            for s_ev in top_hyp.get("supporting_evidence", []):
+                valid_ev_ids.append(s_ev.get("id"))
+            valid_ev_ids.append(top_hyp.get("id"))
+
+        context = {
+            "top_hyp": top_hyp,
+            "alerting_service": alerting_service,
+            "hypotheses_count": len(scored_hyps),
+            "evidence_count": len(valid_ev_ids),
+        }
+
+        def fallback_gen(data: dict[str, Any], enforce_citations: list[str] | None = None) -> dict[str, Any]:
+            th = data.get("top_hyp") or {}
+            svc = th.get("service", alerting_service)
+            score = th.get("evidence_score", 0.0)
+            margin = th.get("margin", 0.0)
+            ev_list = enforce_citations or valid_ev_ids
+            cite_str = f" [{ev_list[0]}]" if ev_list else ""
+            summary = (
+                f"Investigator ranked root cause as '{svc}' with evidence score {score:.2f} "
+                f"and margin {margin:.2f}{cite_str}."
+            )
+            return {
+                "top_cause": th.get("statement", f"Failure in {svc}"),
+                "top_service": svc,
+                "evidence_score": float(score),
+                "margin": float(margin),
+                "summary": summary,
+                "cited_evidence_ids": ev_list[:3],
+            }
+
+        llm_out = self.llm.call_structured(
+            prompt=f"Summarize root cause for incident {incident_id} with top candidate {top_hyp.get('service') if top_hyp else 'none'}",
+            system_prompt="You are Ripple's Investigator Agent. Output root cause summary citing evidence IDs.",
+            schema=InvestigatorOutputSchema,
+            valid_node_ids=valid_ev_ids,
+            context_data=context,
+            fallback_generator=fallback_gen,
+        )
+
+        # 5. Record Observation on blackboard
+        obs = record_agent_observation(
+            graph=graph,
+            agent_run_id=agent_run["id"],
+            incident_id=incident_id,
+            service=top_hyp["service"] if top_hyp else alerting_service,
+            text=llm_out.summary,
+            kind="inferred",
+            confidence_basis=(
+                f"Evidence score: {llm_out.evidence_score:.2f}, margin: {llm_out.margin:.2f}, "
+                f"supporting: {top_hyp.get('supporting_count', 0) if top_hyp else 0}, "
+                f"contradicting: {top_hyp.get('contra_count', 0) if top_hyp else 0}"
+            ),
+            ts=ref_ts,
+        )
+
+        # 6. Mark investigate task completed
+        if task_id:
+            update_task_status(graph, task_id, "completed", {"top_hypothesis_id": top_hyp["id"] if top_hyp else None})
+
+        # 7. Create 'respond' Task on blackboard for Responder
+        resp_payload = {
+            "top_hypothesis": top_hyp,
+            "alerting_service": alerting_service,
+            "investigation_summary": llm_out.summary,
+            "recalled_memory": payload.get("recalled_memory", {}),
+            "evidence_score": llm_out.evidence_score,
+            "margin": llm_out.margin,
+        }
+        resp_task = create_task(
+            graph=graph,
+            incident_id=incident_id,
+            kind="respond",
+            payload=resp_payload,
+            agent_run_id=agent_run["id"],
+            status="pending",
+        )
+
+        # 8. Complete AgentRun
+        complete_agent_run(graph=graph, run_id=agent_run["id"], status="completed", summary=llm_out.summary)
+
+        result = {
+            "agent_run_id": agent_run["id"],
+            "incident_id": incident_id,
+            "top_hypothesis": top_hyp,
+            "hypotheses": scored_hyps,
+            "is_sufficient": is_sufficient,
+            "conflict": conflict_record,
+            "evidence_request_task": ev_task_record,
+            "respond_task_id": resp_task["id"],
+            "observation_id": obs["id"],
+            "summary": llm_out.summary,
+        }
+        return result, trace

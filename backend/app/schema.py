@@ -24,6 +24,8 @@ STANDARD_INDEXES = [
     "CREATE INDEX FOR (obs:Observation) ON (obs.id)",
     "CREATE INDEX FOR (intv:Intervention) ON (intv.id)",
     "CREATE INDEX FOR (out:Outcome) ON (out.id)",
+    "CREATE INDEX FOR (ar:AgentRun) ON (ar.id)",
+    "CREATE INDEX FOR (c:Conflict) ON (c.id)",
 ]
 
 VECTOR_INDEXES = [

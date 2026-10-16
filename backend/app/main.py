@@ -1,7 +1,8 @@
 import logging
 from contextlib import asynccontextmanager
 from typing import Annotated, Any
-from fastapi import FastAPI, Header, HTTPException, Query
+from fastapi import FastAPI, Header, HTTPException, Query, Depends
+from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.tenancy import TenantGraph, ensure_tenant, get_falkordb_client, sanitize_tenant_id
@@ -742,6 +743,165 @@ def api_close_incident(
     except Exception as e:
         logger.error(f"Failed to close incident '{incident_id}': {e}")
         raise HTTPException(status_code=500, detail=f"Failed to close incident: {str(e)}")
+
+
+# ============================================================================
+# M7: Agents and Graph-Native Collaboration API
+# ============================================================================
+
+from app.agents import (
+    IncidentOrchestrator,
+    event_bus,
+    get_blackboard_state,
+    approve_action as approve_agent_action,
+    reject_action as reject_agent_action,
+    get_pending_actions,
+)
+
+
+class IncidentRunRequest(BaseModel):
+    alert: dict[str, Any]
+    incident_id: str | None = None
+    scenario_id: str | None = None
+    as_of: float | None = None
+    mode: str = "replay"
+    auto_approve: bool = False
+
+
+class ActionApprovalRequest(BaseModel):
+    approver: str = "operator"
+    scenario_id: str | None = None
+    as_of: float | None = None
+
+
+class ActionRejectionRequest(BaseModel):
+    reason: str = "Rejected by operator"
+    rejector: str = "operator"
+
+
+@app.post("/incidents")
+@app.post("/api/incidents")
+def api_run_incident_crew(
+    req: IncidentRunRequest,
+    graph: TenantGraph = Depends(get_current_tenant),
+):
+    """Run the 4-agent Ripple crew (Triage, Investigator, Responder, Verifier) over the graph blackboard."""
+    try:
+        orchestrator = IncidentOrchestrator(mode=req.mode)
+        result, trace = orchestrator.run_crew(
+            graph=graph,
+            alert=req.alert,
+            incident_id=req.incident_id,
+            scenario_id=req.scenario_id,
+            as_of=req.as_of,
+            auto_approve=req.auto_approve,
+        )
+        return {
+            "status": "success",
+            "data": result,
+            "trace": trace.to_dict(),
+        }
+    except Exception as e:
+        logger.error(f"Incident crew execution failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Incident crew execution failed: {str(e)}")
+
+
+@app.get("/incidents/{incident_id}")
+@app.get("/api/incidents/{incident_id}")
+def api_get_incident(
+    incident_id: str,
+    graph: TenantGraph = Depends(get_current_tenant),
+):
+    """Retrieve complete incident state and blackboard (tasks, runs, hypotheses, evidence, conflicts, actions)."""
+    bb_state = get_blackboard_state(graph, incident_id)
+    pending_actions = get_pending_actions(graph, incident_id)
+
+    # Incident header info
+    inc_res = graph.query(
+        "MATCH (i:Incident {id: $iid}) RETURN i.id AS id, i.title AS title, i.status AS status, i.opened_ts AS opened_ts, i.resolved_ts AS resolved_ts",
+        {"iid": incident_id},
+    )
+    inc_info = {}
+    if inc_res and inc_res.result_set:
+        r = inc_res.result_set[0]
+        inc_info = {"id": r[0], "title": r[1], "status": r[2], "opened_ts": r[3], "resolved_ts": r[4]}
+
+    return {
+        "incident": inc_info,
+        "blackboard": bb_state,
+        "pending_actions": pending_actions,
+    }
+
+
+@app.get("/incidents/{incident_id}/stream")
+@app.get("/api/incidents/{incident_id}/stream")
+async def api_stream_incident_events(
+    incident_id: str,
+):
+    """Server-Sent Events (SSE) stream of live agent timeline events."""
+    async def sse_generator():
+        async for ev in event_bus.subscribe(incident_id):
+            yield f"event: {ev.get('event', 'message')}\ndata: {json.dumps(ev)}\n\n"
+
+    return StreamingResponse(sse_generator(), media_type="text/event-stream")
+
+
+@app.post("/incidents/{incident_id}/actions/{action_id}/approve")
+@app.post("/api/incidents/{incident_id}/actions/{action_id}/approve")
+def api_approve_incident_action(
+    incident_id: str,
+    action_id: str,
+    req: ActionApprovalRequest = ActionApprovalRequest(),
+    graph: TenantGraph = Depends(get_current_tenant),
+):
+    """Approve a proposed action awaiting human approval and resume the crew by running the Verifier Agent."""
+    try:
+        orchestrator = IncidentOrchestrator(mode="replay")
+        result, trace = orchestrator.approve_and_verify(
+            graph=graph,
+            incident_id=incident_id,
+            action_id=action_id,
+            approver=req.approver,
+            scenario_id=req.scenario_id,
+            as_of=req.as_of,
+        )
+        return {
+            "status": "success",
+            "data": result,
+            "trace": trace.to_dict(),
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Action approval failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Action approval failed: {str(e)}")
+
+
+@app.post("/incidents/{incident_id}/actions/{action_id}/reject")
+@app.post("/api/incidents/{incident_id}/actions/{action_id}/reject")
+def api_reject_incident_action(
+    incident_id: str,
+    action_id: str,
+    req: ActionRejectionRequest = ActionRejectionRequest(),
+    graph: TenantGraph = Depends(get_current_tenant),
+):
+    """Reject a proposed action awaiting human approval."""
+    try:
+        res = reject_agent_action(
+            graph=graph,
+            incident_id=incident_id,
+            action_id=action_id,
+            reason=req.reason,
+            rejector=req.rejector,
+        )
+        return {
+            "status": "success",
+            "data": res,
+        }
+    except Exception as e:
+        logger.error(f"Action rejection failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Action rejection failed: {str(e)}")
+
 
 
 
