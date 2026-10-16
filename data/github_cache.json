@@ -1,0 +1,1448 @@
+{
+  "contributors": [
+    {
+      "login": "ianlewis",
+      "name": "Ian Lewis"
+    },
+    {
+      "login": "grantr",
+      "name": "Grant Rodgers"
+    },
+    {
+      "login": "cymbal-stewart",
+      "name": "Stewart Cymbal"
+    },
+    {
+      "login": "the-red-eye",
+      "name": "Nikita Kosenko"
+    },
+    {
+      "login": "yuri-t",
+      "name": "Yuri Trofimov"
+    },
+    {
+      "login": "mhausenblas",
+      "name": "Michael Hausenblas"
+    },
+    {
+      "login": "viglesiasce",
+      "name": "Vic Iglesias"
+    },
+    {
+      "login": "ahmetb",
+      "name": "Ahmet Alp Balkan"
+    },
+    {
+      "login": "stevemcquaid",
+      "name": "Steve McQuaid"
+    },
+    {
+      "login": "averikok",
+      "name": "Avery Kok"
+    },
+    {
+      "login": "bobbypage",
+      "name": "Bobby Page"
+    },
+    {
+      "login": "daniel-orozco",
+      "name": "Daniel Orozco"
+    },
+    {
+      "login": "sarah-novotny",
+      "name": "Sarah Novotny"
+    },
+    {
+      "login": "saksham-g",
+      "name": "Saksham Gupta"
+    },
+    {
+      "login": "mario-garcia",
+      "name": "Mario Garcia"
+    },
+    {
+      "login": "elena-k",
+      "name": "Elena Kovalev"
+    },
+    {
+      "login": "david-c",
+      "name": "David Chang"
+    },
+    {
+      "login": "chao-b",
+      "name": "Chao Bi"
+    },
+    {
+      "login": "alex-m",
+      "name": "Alex Mercer"
+    },
+    {
+      "login": "nathan-l",
+      "name": "Nathan Lee"
+    },
+    {
+      "login": "priya-s",
+      "name": "Priya Sharma"
+    },
+    {
+      "login": "raj-k",
+      "name": "Raj Kumar"
+    },
+    {
+      "login": "kenji-t",
+      "name": "Kenji Tanaka"
+    },
+    {
+      "login": "lisa-w",
+      "name": "Lisa Wang"
+    },
+    {
+      "login": "kevin-z",
+      "name": "Kevin Zhang"
+    },
+    {
+      "login": "anna-p",
+      "name": "Anna Petrova"
+    },
+    {
+      "login": "sam-h",
+      "name": "Sam Hopkins"
+    },
+    {
+      "login": "joshua-m",
+      "name": "Joshua Miller"
+    },
+    {
+      "login": "tarun-g",
+      "name": "Tarun Goyal"
+    },
+    {
+      "login": "olivia-b",
+      "name": "Olivia Brown"
+    },
+    {
+      "login": "victor-h",
+      "name": "Victor Hugo"
+    },
+    {
+      "login": "zoe-k",
+      "name": "Zoe Kravitz"
+    }
+  ],
+  "service_commits": [
+    {
+      "login": "ianlewis",
+      "service": "paymentservice",
+      "n": 48,
+      "last_ts": 1776000000.0,
+      "is_owner": true
+    },
+    {
+      "login": "the-red-eye",
+      "service": "paymentservice",
+      "n": 22,
+      "last_ts": 1773000000.0,
+      "is_owner": false
+    },
+    {
+      "login": "priya-s",
+      "service": "paymentservice",
+      "n": 15,
+      "last_ts": 1771000000.0,
+      "is_owner": false
+    },
+    {
+      "login": "grantr",
+      "service": "cartservice",
+      "n": 56,
+      "last_ts": 1775000000.0,
+      "is_owner": true
+    },
+    {
+      "login": "mario-garcia",
+      "service": "cartservice",
+      "n": 31,
+      "last_ts": 1772000000.0,
+      "is_owner": false
+    },
+    {
+      "login": "zoe-k",
+      "service": "cartservice",
+      "n": 18,
+      "last_ts": 1774000000.0,
+      "is_owner": false
+    },
+    {
+      "login": "cymbal-stewart",
+      "service": "frontend",
+      "n": 62,
+      "last_ts": 1776200000.0,
+      "is_owner": true
+    },
+    {
+      "login": "yuri-t",
+      "service": "frontend",
+      "n": 44,
+      "last_ts": 1774000000.0,
+      "is_owner": false
+    },
+    {
+      "login": "alex-m",
+      "service": "frontend",
+      "n": 29,
+      "last_ts": 1771500000.0,
+      "is_owner": false
+    },
+    {
+      "login": "viglesiasce",
+      "service": "checkoutservice",
+      "n": 51,
+      "last_ts": 1775500000.0,
+      "is_owner": true
+    },
+    {
+      "login": "ahmetb",
+      "service": "checkoutservice",
+      "n": 38,
+      "last_ts": 1772500000.0,
+      "is_owner": false
+    },
+    {
+      "login": "bobbypage",
+      "service": "checkoutservice",
+      "n": 24,
+      "last_ts": 1770000000.0,
+      "is_owner": false
+    },
+    {
+      "login": "mhausenblas",
+      "service": "currencyservice",
+      "n": 42,
+      "last_ts": 1774500000.0,
+      "is_owner": true
+    },
+    {
+      "login": "daniel-orozco",
+      "service": "currencyservice",
+      "n": 19,
+      "last_ts": 1769000000.0,
+      "is_owner": false
+    },
+    {
+      "login": "kenji-t",
+      "service": "currencyservice",
+      "n": 14,
+      "last_ts": 1771000000.0,
+      "is_owner": false
+    },
+    {
+      "login": "stevemcquaid",
+      "service": "productcatalogservice",
+      "n": 46,
+      "last_ts": 1775800000.0,
+      "is_owner": true
+    },
+    {
+      "login": "saksham-g",
+      "service": "productcatalogservice",
+      "n": 27,
+      "last_ts": 1773500000.0,
+      "is_owner": false
+    },
+    {
+      "login": "anna-p",
+      "service": "productcatalogservice",
+      "n": 16,
+      "last_ts": 1768500000.0,
+      "is_owner": false
+    },
+    {
+      "login": "averikok",
+      "service": "shippingservice",
+      "n": 39,
+      "last_ts": 1775100000.0,
+      "is_owner": true
+    },
+    {
+      "login": "elena-k",
+      "service": "shippingservice",
+      "n": 21,
+      "last_ts": 1772000000.0,
+      "is_owner": false
+    },
+    {
+      "login": "david-c",
+      "service": "emailservice",
+      "n": 34,
+      "last_ts": 1774200000.0,
+      "is_owner": true
+    },
+    {
+      "login": "lisa-w",
+      "service": "emailservice",
+      "n": 18,
+      "last_ts": 1770500000.0,
+      "is_owner": false
+    },
+    {
+      "login": "chao-b",
+      "service": "recommendationservice",
+      "n": 41,
+      "last_ts": 1775300000.0,
+      "is_owner": true
+    },
+    {
+      "login": "nathan-l",
+      "service": "recommendationservice",
+      "n": 22,
+      "last_ts": 1771800000.0,
+      "is_owner": false
+    },
+    {
+      "login": "raj-k",
+      "service": "adservice",
+      "n": 37,
+      "last_ts": 1774900000.0,
+      "is_owner": true
+    },
+    {
+      "login": "sam-h",
+      "service": "adservice",
+      "n": 20,
+      "last_ts": 1769800000.0,
+      "is_owner": false
+    },
+    {
+      "login": "sarah-novotny",
+      "service": "loadgenerator",
+      "n": 33,
+      "last_ts": 1773900000.0,
+      "is_owner": true
+    },
+    {
+      "login": "tarun-g",
+      "service": "loadgenerator",
+      "n": 19,
+      "last_ts": 1771200000.0,
+      "is_owner": false
+    },
+    {
+      "login": "grantr",
+      "service": "redis-cart",
+      "n": 25,
+      "last_ts": 1775000000.0,
+      "is_owner": true
+    },
+    {
+      "login": "kevin-z",
+      "service": "redis-cart",
+      "n": 15,
+      "last_ts": 1772000000.0,
+      "is_owner": false
+    }
+  ],
+  "pull_requests": [
+    {
+      "number": 1101,
+      "title": "feat(paymentservice): optimize connection pool and timeout handling",
+      "body": "Refactored client connection pool to prevent socket exhaustion under high load. Touched files: src/paymentservice/server.go, src/paymentservice/client.go. Fixes #1001.",
+      "author": "ianlewis",
+      "service": "paymentservice",
+      "merged_at": 1770086400.0,
+      "url": "https://github.com/GoogleCloudPlatform/microservices-demo/pull/1101",
+      "tag": "connection_pool"
+    },
+    {
+      "number": 1102,
+      "title": "feat(cartservice): optimize connection pool and timeout handling",
+      "body": "Refactored client connection pool to prevent socket exhaustion under high load. Touched files: src/cartservice/server.go, src/cartservice/client.go. Fixes #1002.",
+      "author": "grantr",
+      "service": "cartservice",
+      "merged_at": 1770172800.0,
+      "url": "https://github.com/GoogleCloudPlatform/microservices-demo/pull/1102",
+      "tag": "connection_pool"
+    },
+    {
+      "number": 1103,
+      "title": "feat(checkoutservice): optimize connection pool and timeout handling",
+      "body": "Refactored client connection pool to prevent socket exhaustion under high load. Touched files: src/checkoutservice/server.go, src/checkoutservice/client.go. Fixes #1003.",
+      "author": "viglesiasce",
+      "service": "checkoutservice",
+      "merged_at": 1770259200.0,
+      "url": "https://github.com/GoogleCloudPlatform/microservices-demo/pull/1103",
+      "tag": "connection_pool"
+    },
+    {
+      "number": 1104,
+      "title": "feat(frontend): optimize connection pool and timeout handling",
+      "body": "Refactored client connection pool to prevent socket exhaustion under high load. Touched files: src/frontend/server.go, src/frontend/client.go. Fixes #1004.",
+      "author": "cymbal-stewart",
+      "service": "frontend",
+      "merged_at": 1770345600.0,
+      "url": "https://github.com/GoogleCloudPlatform/microservices-demo/pull/1104",
+      "tag": "connection_pool"
+    },
+    {
+      "number": 1105,
+      "title": "feat(currencyservice): optimize connection pool and timeout handling",
+      "body": "Refactored client connection pool to prevent socket exhaustion under high load. Touched files: src/currencyservice/server.go, src/currencyservice/client.go. Fixes #1005.",
+      "author": "mhausenblas",
+      "service": "currencyservice",
+      "merged_at": 1770432000.0,
+      "url": "https://github.com/GoogleCloudPlatform/microservices-demo/pull/1105",
+      "tag": "connection_pool"
+    },
+    {
+      "number": 1106,
+      "title": "feat(productcatalogservice): optimize connection pool and timeout handling",
+      "body": "Refactored client connection pool to prevent socket exhaustion under high load. Touched files: src/productcatalogservice/server.go, src/productcatalogservice/client.go. Fixes #1006.",
+      "author": "stevemcquaid",
+      "service": "productcatalogservice",
+      "merged_at": 1770518400.0,
+      "url": "https://github.com/GoogleCloudPlatform/microservices-demo/pull/1106",
+      "tag": "connection_pool"
+    },
+    {
+      "number": 1107,
+      "title": "feat(shippingservice): optimize connection pool and timeout handling",
+      "body": "Refactored client connection pool to prevent socket exhaustion under high load. Touched files: src/shippingservice/server.go, src/shippingservice/client.go. Fixes #1007.",
+      "author": "averikok",
+      "service": "shippingservice",
+      "merged_at": 1770604800.0,
+      "url": "https://github.com/GoogleCloudPlatform/microservices-demo/pull/1107",
+      "tag": "connection_pool"
+    },
+    {
+      "number": 1108,
+      "title": "feat(emailservice): optimize connection pool and timeout handling",
+      "body": "Refactored client connection pool to prevent socket exhaustion under high load. Touched files: src/emailservice/server.go, src/emailservice/client.go. Fixes #1008.",
+      "author": "david-c",
+      "service": "emailservice",
+      "merged_at": 1770691200.0,
+      "url": "https://github.com/GoogleCloudPlatform/microservices-demo/pull/1108",
+      "tag": "connection_pool"
+    },
+    {
+      "number": 1109,
+      "title": "feat(recommendationservice): optimize connection pool and timeout handling",
+      "body": "Refactored client connection pool to prevent socket exhaustion under high load. Touched files: src/recommendationservice/server.go, src/recommendationservice/client.go. Fixes #1009.",
+      "author": "chao-b",
+      "service": "recommendationservice",
+      "merged_at": 1770777600.0,
+      "url": "https://github.com/GoogleCloudPlatform/microservices-demo/pull/1109",
+      "tag": "connection_pool"
+    },
+    {
+      "number": 1110,
+      "title": "feat(adservice): optimize connection pool and timeout handling",
+      "body": "Refactored client connection pool to prevent socket exhaustion under high load. Touched files: src/adservice/server.go, src/adservice/client.go. Fixes #1010.",
+      "author": "raj-k",
+      "service": "adservice",
+      "merged_at": 1770864000.0,
+      "url": "https://github.com/GoogleCloudPlatform/microservices-demo/pull/1110",
+      "tag": "connection_pool"
+    },
+    {
+      "number": 1111,
+      "title": "feat(loadgenerator): optimize connection pool and timeout handling",
+      "body": "Refactored client connection pool to prevent socket exhaustion under high load. Touched files: src/loadgenerator/server.go, src/loadgenerator/client.go. Fixes #1011.",
+      "author": "sarah-novotny",
+      "service": "loadgenerator",
+      "merged_at": 1770950400.0,
+      "url": "https://github.com/GoogleCloudPlatform/microservices-demo/pull/1111",
+      "tag": "connection_pool"
+    },
+    {
+      "number": 1112,
+      "title": "fix(paymentservice): resolve memory leak in response serialization",
+      "body": "Patched buffer reuse in serializer that was causing slow OOM crashes. Touched files: src/paymentservice/server.go, src/paymentservice/client.go. Fixes #1012.",
+      "author": "ianlewis",
+      "service": "paymentservice",
+      "merged_at": 1771036800.0,
+      "url": "https://github.com/GoogleCloudPlatform/microservices-demo/pull/1112",
+      "tag": "memory_leak"
+    },
+    {
+      "number": 1113,
+      "title": "fix(cartservice): resolve memory leak in response serialization",
+      "body": "Patched buffer reuse in serializer that was causing slow OOM crashes. Touched files: src/cartservice/server.go, src/cartservice/client.go. Fixes #1013.",
+      "author": "grantr",
+      "service": "cartservice",
+      "merged_at": 1771123200.0,
+      "url": "https://github.com/GoogleCloudPlatform/microservices-demo/pull/1113",
+      "tag": "memory_leak"
+    },
+    {
+      "number": 1114,
+      "title": "fix(checkoutservice): resolve memory leak in response serialization",
+      "body": "Patched buffer reuse in serializer that was causing slow OOM crashes. Touched files: src/checkoutservice/server.go, src/checkoutservice/client.go. Fixes #1014.",
+      "author": "viglesiasce",
+      "service": "checkoutservice",
+      "merged_at": 1771209600.0,
+      "url": "https://github.com/GoogleCloudPlatform/microservices-demo/pull/1114",
+      "tag": "memory_leak"
+    },
+    {
+      "number": 1115,
+      "title": "fix(frontend): resolve memory leak in response serialization",
+      "body": "Patched buffer reuse in serializer that was causing slow OOM crashes. Touched files: src/frontend/server.go, src/frontend/client.go. Fixes #1015.",
+      "author": "cymbal-stewart",
+      "service": "frontend",
+      "merged_at": 1771296000.0,
+      "url": "https://github.com/GoogleCloudPlatform/microservices-demo/pull/1115",
+      "tag": "memory_leak"
+    },
+    {
+      "number": 1116,
+      "title": "fix(currencyservice): resolve memory leak in response serialization",
+      "body": "Patched buffer reuse in serializer that was causing slow OOM crashes. Touched files: src/currencyservice/server.go, src/currencyservice/client.go. Fixes #1016.",
+      "author": "mhausenblas",
+      "service": "currencyservice",
+      "merged_at": 1771382400.0,
+      "url": "https://github.com/GoogleCloudPlatform/microservices-demo/pull/1116",
+      "tag": "memory_leak"
+    },
+    {
+      "number": 1117,
+      "title": "fix(productcatalogservice): resolve memory leak in response serialization",
+      "body": "Patched buffer reuse in serializer that was causing slow OOM crashes. Touched files: src/productcatalogservice/server.go, src/productcatalogservice/client.go. Fixes #1017.",
+      "author": "stevemcquaid",
+      "service": "productcatalogservice",
+      "merged_at": 1771468800.0,
+      "url": "https://github.com/GoogleCloudPlatform/microservices-demo/pull/1117",
+      "tag": "memory_leak"
+    },
+    {
+      "number": 1118,
+      "title": "fix(shippingservice): resolve memory leak in response serialization",
+      "body": "Patched buffer reuse in serializer that was causing slow OOM crashes. Touched files: src/shippingservice/server.go, src/shippingservice/client.go. Fixes #1018.",
+      "author": "averikok",
+      "service": "shippingservice",
+      "merged_at": 1771555200.0,
+      "url": "https://github.com/GoogleCloudPlatform/microservices-demo/pull/1118",
+      "tag": "memory_leak"
+    },
+    {
+      "number": 1119,
+      "title": "fix(emailservice): resolve memory leak in response serialization",
+      "body": "Patched buffer reuse in serializer that was causing slow OOM crashes. Touched files: src/emailservice/server.go, src/emailservice/client.go. Fixes #1019.",
+      "author": "david-c",
+      "service": "emailservice",
+      "merged_at": 1771641600.0,
+      "url": "https://github.com/GoogleCloudPlatform/microservices-demo/pull/1119",
+      "tag": "memory_leak"
+    },
+    {
+      "number": 1120,
+      "title": "fix(recommendationservice): resolve memory leak in response serialization",
+      "body": "Patched buffer reuse in serializer that was causing slow OOM crashes. Touched files: src/recommendationservice/server.go, src/recommendationservice/client.go. Fixes #1020.",
+      "author": "chao-b",
+      "service": "recommendationservice",
+      "merged_at": 1771728000.0,
+      "url": "https://github.com/GoogleCloudPlatform/microservices-demo/pull/1120",
+      "tag": "memory_leak"
+    },
+    {
+      "number": 1121,
+      "title": "fix(adservice): resolve memory leak in response serialization",
+      "body": "Patched buffer reuse in serializer that was causing slow OOM crashes. Touched files: src/adservice/server.go, src/adservice/client.go. Fixes #1021.",
+      "author": "raj-k",
+      "service": "adservice",
+      "merged_at": 1771814400.0,
+      "url": "https://github.com/GoogleCloudPlatform/microservices-demo/pull/1121",
+      "tag": "memory_leak"
+    },
+    {
+      "number": 1122,
+      "title": "fix(loadgenerator): resolve memory leak in response serialization",
+      "body": "Patched buffer reuse in serializer that was causing slow OOM crashes. Touched files: src/loadgenerator/server.go, src/loadgenerator/client.go. Fixes #1022.",
+      "author": "sarah-novotny",
+      "service": "loadgenerator",
+      "merged_at": 1771900800.0,
+      "url": "https://github.com/GoogleCloudPlatform/microservices-demo/pull/1122",
+      "tag": "memory_leak"
+    },
+    {
+      "number": 1123,
+      "title": "perf(paymentservice): add redis pipeline batching",
+      "body": "Batched read/write commands into Redis pipelining to halve network round trips. Touched files: src/paymentservice/server.go, src/paymentservice/client.go. Fixes #1023.",
+      "author": "ianlewis",
+      "service": "paymentservice",
+      "merged_at": 1771987200.0,
+      "url": "https://github.com/GoogleCloudPlatform/microservices-demo/pull/1123",
+      "tag": "batching"
+    },
+    {
+      "number": 1124,
+      "title": "perf(cartservice): add redis pipeline batching",
+      "body": "Batched read/write commands into Redis pipelining to halve network round trips. Touched files: src/cartservice/server.go, src/cartservice/client.go. Fixes #1024.",
+      "author": "grantr",
+      "service": "cartservice",
+      "merged_at": 1772073600.0,
+      "url": "https://github.com/GoogleCloudPlatform/microservices-demo/pull/1124",
+      "tag": "batching"
+    },
+    {
+      "number": 1125,
+      "title": "perf(checkoutservice): add redis pipeline batching",
+      "body": "Batched read/write commands into Redis pipelining to halve network round trips. Touched files: src/checkoutservice/server.go, src/checkoutservice/client.go. Fixes #1025.",
+      "author": "viglesiasce",
+      "service": "checkoutservice",
+      "merged_at": 1772160000.0,
+      "url": "https://github.com/GoogleCloudPlatform/microservices-demo/pull/1125",
+      "tag": "batching"
+    },
+    {
+      "number": 1126,
+      "title": "perf(frontend): add redis pipeline batching",
+      "body": "Batched read/write commands into Redis pipelining to halve network round trips. Touched files: src/frontend/server.go, src/frontend/client.go. Fixes #1026.",
+      "author": "cymbal-stewart",
+      "service": "frontend",
+      "merged_at": 1772246400.0,
+      "url": "https://github.com/GoogleCloudPlatform/microservices-demo/pull/1126",
+      "tag": "batching"
+    },
+    {
+      "number": 1127,
+      "title": "perf(currencyservice): add redis pipeline batching",
+      "body": "Batched read/write commands into Redis pipelining to halve network round trips. Touched files: src/currencyservice/server.go, src/currencyservice/client.go. Fixes #1027.",
+      "author": "mhausenblas",
+      "service": "currencyservice",
+      "merged_at": 1772332800.0,
+      "url": "https://github.com/GoogleCloudPlatform/microservices-demo/pull/1127",
+      "tag": "batching"
+    },
+    {
+      "number": 1128,
+      "title": "perf(productcatalogservice): add redis pipeline batching",
+      "body": "Batched read/write commands into Redis pipelining to halve network round trips. Touched files: src/productcatalogservice/server.go, src/productcatalogservice/client.go. Fixes #1028.",
+      "author": "stevemcquaid",
+      "service": "productcatalogservice",
+      "merged_at": 1772419200.0,
+      "url": "https://github.com/GoogleCloudPlatform/microservices-demo/pull/1128",
+      "tag": "batching"
+    },
+    {
+      "number": 1129,
+      "title": "perf(shippingservice): add redis pipeline batching",
+      "body": "Batched read/write commands into Redis pipelining to halve network round trips. Touched files: src/shippingservice/server.go, src/shippingservice/client.go. Fixes #1029.",
+      "author": "averikok",
+      "service": "shippingservice",
+      "merged_at": 1772505600.0,
+      "url": "https://github.com/GoogleCloudPlatform/microservices-demo/pull/1129",
+      "tag": "batching"
+    },
+    {
+      "number": 1130,
+      "title": "perf(emailservice): add redis pipeline batching",
+      "body": "Batched read/write commands into Redis pipelining to halve network round trips. Touched files: src/emailservice/server.go, src/emailservice/client.go. Fixes #1030.",
+      "author": "david-c",
+      "service": "emailservice",
+      "merged_at": 1772592000.0,
+      "url": "https://github.com/GoogleCloudPlatform/microservices-demo/pull/1130",
+      "tag": "batching"
+    },
+    {
+      "number": 1131,
+      "title": "perf(recommendationservice): add redis pipeline batching",
+      "body": "Batched read/write commands into Redis pipelining to halve network round trips. Touched files: src/recommendationservice/server.go, src/recommendationservice/client.go. Fixes #1031.",
+      "author": "chao-b",
+      "service": "recommendationservice",
+      "merged_at": 1772678400.0,
+      "url": "https://github.com/GoogleCloudPlatform/microservices-demo/pull/1131",
+      "tag": "batching"
+    },
+    {
+      "number": 1132,
+      "title": "perf(adservice): add redis pipeline batching",
+      "body": "Batched read/write commands into Redis pipelining to halve network round trips. Touched files: src/adservice/server.go, src/adservice/client.go. Fixes #1032.",
+      "author": "raj-k",
+      "service": "adservice",
+      "merged_at": 1772764800.0,
+      "url": "https://github.com/GoogleCloudPlatform/microservices-demo/pull/1132",
+      "tag": "batching"
+    },
+    {
+      "number": 1133,
+      "title": "perf(loadgenerator): add redis pipeline batching",
+      "body": "Batched read/write commands into Redis pipelining to halve network round trips. Touched files: src/loadgenerator/server.go, src/loadgenerator/client.go. Fixes #1033.",
+      "author": "sarah-novotny",
+      "service": "loadgenerator",
+      "merged_at": 1772851200.0,
+      "url": "https://github.com/GoogleCloudPlatform/microservices-demo/pull/1133",
+      "tag": "batching"
+    },
+    {
+      "number": 1134,
+      "title": "refactor(paymentservice): migrate health probe to grpc health checking",
+      "body": "Replaced custom HTTP endpoint with standard gRPC health check v1 protocol. Touched files: src/paymentservice/server.go, src/paymentservice/client.go. Fixes #1034.",
+      "author": "ianlewis",
+      "service": "paymentservice",
+      "merged_at": 1772937600.0,
+      "url": "https://github.com/GoogleCloudPlatform/microservices-demo/pull/1134",
+      "tag": "grpc_health"
+    },
+    {
+      "number": 1135,
+      "title": "refactor(cartservice): migrate health probe to grpc health checking",
+      "body": "Replaced custom HTTP endpoint with standard gRPC health check v1 protocol. Touched files: src/cartservice/server.go, src/cartservice/client.go. Fixes #1035.",
+      "author": "grantr",
+      "service": "cartservice",
+      "merged_at": 1773024000.0,
+      "url": "https://github.com/GoogleCloudPlatform/microservices-demo/pull/1135",
+      "tag": "grpc_health"
+    },
+    {
+      "number": 1136,
+      "title": "refactor(checkoutservice): migrate health probe to grpc health checking",
+      "body": "Replaced custom HTTP endpoint with standard gRPC health check v1 protocol. Touched files: src/checkoutservice/server.go, src/checkoutservice/client.go. Fixes #1036.",
+      "author": "viglesiasce",
+      "service": "checkoutservice",
+      "merged_at": 1773110400.0,
+      "url": "https://github.com/GoogleCloudPlatform/microservices-demo/pull/1136",
+      "tag": "grpc_health"
+    },
+    {
+      "number": 1137,
+      "title": "refactor(frontend): migrate health probe to grpc health checking",
+      "body": "Replaced custom HTTP endpoint with standard gRPC health check v1 protocol. Touched files: src/frontend/server.go, src/frontend/client.go. Fixes #1037.",
+      "author": "cymbal-stewart",
+      "service": "frontend",
+      "merged_at": 1773196800.0,
+      "url": "https://github.com/GoogleCloudPlatform/microservices-demo/pull/1137",
+      "tag": "grpc_health"
+    },
+    {
+      "number": 1138,
+      "title": "refactor(currencyservice): migrate health probe to grpc health checking",
+      "body": "Replaced custom HTTP endpoint with standard gRPC health check v1 protocol. Touched files: src/currencyservice/server.go, src/currencyservice/client.go. Fixes #1038.",
+      "author": "mhausenblas",
+      "service": "currencyservice",
+      "merged_at": 1773283200.0,
+      "url": "https://github.com/GoogleCloudPlatform/microservices-demo/pull/1138",
+      "tag": "grpc_health"
+    },
+    {
+      "number": 1139,
+      "title": "refactor(productcatalogservice): migrate health probe to grpc health checking",
+      "body": "Replaced custom HTTP endpoint with standard gRPC health check v1 protocol. Touched files: src/productcatalogservice/server.go, src/productcatalogservice/client.go. Fixes #1039.",
+      "author": "stevemcquaid",
+      "service": "productcatalogservice",
+      "merged_at": 1773369600.0,
+      "url": "https://github.com/GoogleCloudPlatform/microservices-demo/pull/1139",
+      "tag": "grpc_health"
+    },
+    {
+      "number": 1140,
+      "title": "refactor(shippingservice): migrate health probe to grpc health checking",
+      "body": "Replaced custom HTTP endpoint with standard gRPC health check v1 protocol. Touched files: src/shippingservice/server.go, src/shippingservice/client.go. Fixes #1040.",
+      "author": "averikok",
+      "service": "shippingservice",
+      "merged_at": 1773456000.0,
+      "url": "https://github.com/GoogleCloudPlatform/microservices-demo/pull/1140",
+      "tag": "grpc_health"
+    },
+    {
+      "number": 1141,
+      "title": "refactor(emailservice): migrate health probe to grpc health checking",
+      "body": "Replaced custom HTTP endpoint with standard gRPC health check v1 protocol. Touched files: src/emailservice/server.go, src/emailservice/client.go. Fixes #1041.",
+      "author": "david-c",
+      "service": "emailservice",
+      "merged_at": 1773542400.0,
+      "url": "https://github.com/GoogleCloudPlatform/microservices-demo/pull/1141",
+      "tag": "grpc_health"
+    },
+    {
+      "number": 1142,
+      "title": "refactor(recommendationservice): migrate health probe to grpc health checking",
+      "body": "Replaced custom HTTP endpoint with standard gRPC health check v1 protocol. Touched files: src/recommendationservice/server.go, src/recommendationservice/client.go. Fixes #1042.",
+      "author": "chao-b",
+      "service": "recommendationservice",
+      "merged_at": 1773628800.0,
+      "url": "https://github.com/GoogleCloudPlatform/microservices-demo/pull/1142",
+      "tag": "grpc_health"
+    },
+    {
+      "number": 1143,
+      "title": "refactor(adservice): migrate health probe to grpc health checking",
+      "body": "Replaced custom HTTP endpoint with standard gRPC health check v1 protocol. Touched files: src/adservice/server.go, src/adservice/client.go. Fixes #1043.",
+      "author": "raj-k",
+      "service": "adservice",
+      "merged_at": 1773715200.0,
+      "url": "https://github.com/GoogleCloudPlatform/microservices-demo/pull/1143",
+      "tag": "grpc_health"
+    },
+    {
+      "number": 1144,
+      "title": "refactor(loadgenerator): migrate health probe to grpc health checking",
+      "body": "Replaced custom HTTP endpoint with standard gRPC health check v1 protocol. Touched files: src/loadgenerator/server.go, src/loadgenerator/client.go. Fixes #1044.",
+      "author": "sarah-novotny",
+      "service": "loadgenerator",
+      "merged_at": 1773801600.0,
+      "url": "https://github.com/GoogleCloudPlatform/microservices-demo/pull/1144",
+      "tag": "grpc_health"
+    },
+    {
+      "number": 1145,
+      "title": "chore(paymentservice): bump dependencies and compiler optimizations",
+      "body": "Updated base container image and runtime dependencies for security. Touched files: src/paymentservice/server.go, src/paymentservice/client.go. Fixes #1045.",
+      "author": "ianlewis",
+      "service": "paymentservice",
+      "merged_at": 1773888000.0,
+      "url": "https://github.com/GoogleCloudPlatform/microservices-demo/pull/1145",
+      "tag": "deps_bump"
+    },
+    {
+      "number": 1146,
+      "title": "chore(cartservice): bump dependencies and compiler optimizations",
+      "body": "Updated base container image and runtime dependencies for security. Touched files: src/cartservice/server.go, src/cartservice/client.go. Fixes #1046.",
+      "author": "grantr",
+      "service": "cartservice",
+      "merged_at": 1773974400.0,
+      "url": "https://github.com/GoogleCloudPlatform/microservices-demo/pull/1146",
+      "tag": "deps_bump"
+    },
+    {
+      "number": 1147,
+      "title": "chore(checkoutservice): bump dependencies and compiler optimizations",
+      "body": "Updated base container image and runtime dependencies for security. Touched files: src/checkoutservice/server.go, src/checkoutservice/client.go. Fixes #1047.",
+      "author": "viglesiasce",
+      "service": "checkoutservice",
+      "merged_at": 1774060800.0,
+      "url": "https://github.com/GoogleCloudPlatform/microservices-demo/pull/1147",
+      "tag": "deps_bump"
+    },
+    {
+      "number": 1148,
+      "title": "chore(frontend): bump dependencies and compiler optimizations",
+      "body": "Updated base container image and runtime dependencies for security. Touched files: src/frontend/server.go, src/frontend/client.go. Fixes #1048.",
+      "author": "cymbal-stewart",
+      "service": "frontend",
+      "merged_at": 1774147200.0,
+      "url": "https://github.com/GoogleCloudPlatform/microservices-demo/pull/1148",
+      "tag": "deps_bump"
+    },
+    {
+      "number": 1149,
+      "title": "chore(currencyservice): bump dependencies and compiler optimizations",
+      "body": "Updated base container image and runtime dependencies for security. Touched files: src/currencyservice/server.go, src/currencyservice/client.go. Fixes #1049.",
+      "author": "mhausenblas",
+      "service": "currencyservice",
+      "merged_at": 1774233600.0,
+      "url": "https://github.com/GoogleCloudPlatform/microservices-demo/pull/1149",
+      "tag": "deps_bump"
+    },
+    {
+      "number": 1150,
+      "title": "chore(productcatalogservice): bump dependencies and compiler optimizations",
+      "body": "Updated base container image and runtime dependencies for security. Touched files: src/productcatalogservice/server.go, src/productcatalogservice/client.go. Fixes #1050.",
+      "author": "stevemcquaid",
+      "service": "productcatalogservice",
+      "merged_at": 1774320000.0,
+      "url": "https://github.com/GoogleCloudPlatform/microservices-demo/pull/1150",
+      "tag": "deps_bump"
+    },
+    {
+      "number": 1151,
+      "title": "chore(shippingservice): bump dependencies and compiler optimizations",
+      "body": "Updated base container image and runtime dependencies for security. Touched files: src/shippingservice/server.go, src/shippingservice/client.go. Fixes #1051.",
+      "author": "averikok",
+      "service": "shippingservice",
+      "merged_at": 1774406400.0,
+      "url": "https://github.com/GoogleCloudPlatform/microservices-demo/pull/1151",
+      "tag": "deps_bump"
+    },
+    {
+      "number": 1152,
+      "title": "chore(emailservice): bump dependencies and compiler optimizations",
+      "body": "Updated base container image and runtime dependencies for security. Touched files: src/emailservice/server.go, src/emailservice/client.go. Fixes #1052.",
+      "author": "david-c",
+      "service": "emailservice",
+      "merged_at": 1774492800.0,
+      "url": "https://github.com/GoogleCloudPlatform/microservices-demo/pull/1152",
+      "tag": "deps_bump"
+    },
+    {
+      "number": 1153,
+      "title": "chore(recommendationservice): bump dependencies and compiler optimizations",
+      "body": "Updated base container image and runtime dependencies for security. Touched files: src/recommendationservice/server.go, src/recommendationservice/client.go. Fixes #1053.",
+      "author": "chao-b",
+      "service": "recommendationservice",
+      "merged_at": 1774579200.0,
+      "url": "https://github.com/GoogleCloudPlatform/microservices-demo/pull/1153",
+      "tag": "deps_bump"
+    },
+    {
+      "number": 1154,
+      "title": "chore(adservice): bump dependencies and compiler optimizations",
+      "body": "Updated base container image and runtime dependencies for security. Touched files: src/adservice/server.go, src/adservice/client.go. Fixes #1054.",
+      "author": "raj-k",
+      "service": "adservice",
+      "merged_at": 1774665600.0,
+      "url": "https://github.com/GoogleCloudPlatform/microservices-demo/pull/1154",
+      "tag": "deps_bump"
+    },
+    {
+      "number": 1155,
+      "title": "chore(loadgenerator): bump dependencies and compiler optimizations",
+      "body": "Updated base container image and runtime dependencies for security. Touched files: src/loadgenerator/server.go, src/loadgenerator/client.go. Fixes #1055.",
+      "author": "sarah-novotny",
+      "service": "loadgenerator",
+      "merged_at": 1774752000.0,
+      "url": "https://github.com/GoogleCloudPlatform/microservices-demo/pull/1155",
+      "tag": "deps_bump"
+    }
+  ],
+  "issues": [
+    {
+      "number": 1001,
+      "title": "Intermittent timeout when calling paymentservice under p95 spikes",
+      "body": "Reported by @the-red-eye for paymentservice. Observed p95 latency spike exceeding 2000ms during peak load tests.",
+      "author": "the-red-eye",
+      "service": "paymentservice",
+      "state": "open",
+      "created_at": 1769072000.0,
+      "url": "https://github.com/GoogleCloudPlatform/microservices-demo/issues/1001"
+    },
+    {
+      "number": 1002,
+      "title": "Intermittent timeout when calling cartservice under p95 spikes",
+      "body": "Reported by @mario-garcia for cartservice. Observed p95 latency spike exceeding 2000ms during peak load tests.",
+      "author": "mario-garcia",
+      "service": "cartservice",
+      "state": "open",
+      "created_at": 1769144000.0,
+      "url": "https://github.com/GoogleCloudPlatform/microservices-demo/issues/1002"
+    },
+    {
+      "number": 1003,
+      "title": "Intermittent timeout when calling checkoutservice under p95 spikes",
+      "body": "Reported by @ahmetb for checkoutservice. Observed p95 latency spike exceeding 2000ms during peak load tests.",
+      "author": "ahmetb",
+      "service": "checkoutservice",
+      "state": "open",
+      "created_at": 1769216000.0,
+      "url": "https://github.com/GoogleCloudPlatform/microservices-demo/issues/1003"
+    },
+    {
+      "number": 1004,
+      "title": "Intermittent timeout when calling frontend under p95 spikes",
+      "body": "Reported by @yuri-t for frontend. Observed p95 latency spike exceeding 2000ms during peak load tests.",
+      "author": "yuri-t",
+      "service": "frontend",
+      "state": "open",
+      "created_at": 1769288000.0,
+      "url": "https://github.com/GoogleCloudPlatform/microservices-demo/issues/1004"
+    },
+    {
+      "number": 1005,
+      "title": "Intermittent timeout when calling currencyservice under p95 spikes",
+      "body": "Reported by @daniel-orozco for currencyservice. Observed p95 latency spike exceeding 2000ms during peak load tests.",
+      "author": "daniel-orozco",
+      "service": "currencyservice",
+      "state": "open",
+      "created_at": 1769360000.0,
+      "url": "https://github.com/GoogleCloudPlatform/microservices-demo/issues/1005"
+    },
+    {
+      "number": 1006,
+      "title": "Intermittent timeout when calling productcatalogservice under p95 spikes",
+      "body": "Reported by @saksham-g for productcatalogservice. Observed p95 latency spike exceeding 2000ms during peak load tests.",
+      "author": "saksham-g",
+      "service": "productcatalogservice",
+      "state": "open",
+      "created_at": 1769432000.0,
+      "url": "https://github.com/GoogleCloudPlatform/microservices-demo/issues/1006"
+    },
+    {
+      "number": 1007,
+      "title": "Intermittent timeout when calling shippingservice under p95 spikes",
+      "body": "Reported by @elena-k for shippingservice. Observed p95 latency spike exceeding 2000ms during peak load tests.",
+      "author": "elena-k",
+      "service": "shippingservice",
+      "state": "open",
+      "created_at": 1769504000.0,
+      "url": "https://github.com/GoogleCloudPlatform/microservices-demo/issues/1007"
+    },
+    {
+      "number": 1008,
+      "title": "Intermittent timeout when calling emailservice under p95 spikes",
+      "body": "Reported by @lisa-w for emailservice. Observed p95 latency spike exceeding 2000ms during peak load tests.",
+      "author": "lisa-w",
+      "service": "emailservice",
+      "state": "open",
+      "created_at": 1769576000.0,
+      "url": "https://github.com/GoogleCloudPlatform/microservices-demo/issues/1008"
+    },
+    {
+      "number": 1009,
+      "title": "Intermittent timeout when calling recommendationservice under p95 spikes",
+      "body": "Reported by @nathan-l for recommendationservice. Observed p95 latency spike exceeding 2000ms during peak load tests.",
+      "author": "nathan-l",
+      "service": "recommendationservice",
+      "state": "open",
+      "created_at": 1769648000.0,
+      "url": "https://github.com/GoogleCloudPlatform/microservices-demo/issues/1009"
+    },
+    {
+      "number": 1010,
+      "title": "Intermittent timeout when calling adservice under p95 spikes",
+      "body": "Reported by @sam-h for adservice. Observed p95 latency spike exceeding 2000ms during peak load tests.",
+      "author": "sam-h",
+      "service": "adservice",
+      "state": "open",
+      "created_at": 1769720000.0,
+      "url": "https://github.com/GoogleCloudPlatform/microservices-demo/issues/1010"
+    },
+    {
+      "number": 1011,
+      "title": "Intermittent timeout when calling loadgenerator under p95 spikes",
+      "body": "Reported by @tarun-g for loadgenerator. Observed p95 latency spike exceeding 2000ms during peak load tests.",
+      "author": "tarun-g",
+      "service": "loadgenerator",
+      "state": "open",
+      "created_at": 1769792000.0,
+      "url": "https://github.com/GoogleCloudPlatform/microservices-demo/issues/1011"
+    },
+    {
+      "number": 1012,
+      "title": "Deadlock detected during rapid checkout concurrency in paymentservice",
+      "body": "Reported by @the-red-eye for paymentservice. Multiple simultaneous requests can lock session state.",
+      "author": "the-red-eye",
+      "service": "paymentservice",
+      "state": "closed",
+      "created_at": 1769864000.0,
+      "url": "https://github.com/GoogleCloudPlatform/microservices-demo/issues/1012"
+    },
+    {
+      "number": 1013,
+      "title": "Deadlock detected during rapid checkout concurrency in cartservice",
+      "body": "Reported by @mario-garcia for cartservice. Multiple simultaneous requests can lock session state.",
+      "author": "mario-garcia",
+      "service": "cartservice",
+      "state": "closed",
+      "created_at": 1769936000.0,
+      "url": "https://github.com/GoogleCloudPlatform/microservices-demo/issues/1013"
+    },
+    {
+      "number": 1014,
+      "title": "Deadlock detected during rapid checkout concurrency in checkoutservice",
+      "body": "Reported by @ahmetb for checkoutservice. Multiple simultaneous requests can lock session state.",
+      "author": "ahmetb",
+      "service": "checkoutservice",
+      "state": "closed",
+      "created_at": 1770008000.0,
+      "url": "https://github.com/GoogleCloudPlatform/microservices-demo/issues/1014"
+    },
+    {
+      "number": 1015,
+      "title": "Deadlock detected during rapid checkout concurrency in frontend",
+      "body": "Reported by @yuri-t for frontend. Multiple simultaneous requests can lock session state.",
+      "author": "yuri-t",
+      "service": "frontend",
+      "state": "closed",
+      "created_at": 1770080000.0,
+      "url": "https://github.com/GoogleCloudPlatform/microservices-demo/issues/1015"
+    },
+    {
+      "number": 1016,
+      "title": "Deadlock detected during rapid checkout concurrency in currencyservice",
+      "body": "Reported by @daniel-orozco for currencyservice. Multiple simultaneous requests can lock session state.",
+      "author": "daniel-orozco",
+      "service": "currencyservice",
+      "state": "closed",
+      "created_at": 1770152000.0,
+      "url": "https://github.com/GoogleCloudPlatform/microservices-demo/issues/1016"
+    },
+    {
+      "number": 1017,
+      "title": "Deadlock detected during rapid checkout concurrency in productcatalogservice",
+      "body": "Reported by @saksham-g for productcatalogservice. Multiple simultaneous requests can lock session state.",
+      "author": "saksham-g",
+      "service": "productcatalogservice",
+      "state": "closed",
+      "created_at": 1770224000.0,
+      "url": "https://github.com/GoogleCloudPlatform/microservices-demo/issues/1017"
+    },
+    {
+      "number": 1018,
+      "title": "Deadlock detected during rapid checkout concurrency in shippingservice",
+      "body": "Reported by @elena-k for shippingservice. Multiple simultaneous requests can lock session state.",
+      "author": "elena-k",
+      "service": "shippingservice",
+      "state": "closed",
+      "created_at": 1770296000.0,
+      "url": "https://github.com/GoogleCloudPlatform/microservices-demo/issues/1018"
+    },
+    {
+      "number": 1019,
+      "title": "Deadlock detected during rapid checkout concurrency in emailservice",
+      "body": "Reported by @lisa-w for emailservice. Multiple simultaneous requests can lock session state.",
+      "author": "lisa-w",
+      "service": "emailservice",
+      "state": "closed",
+      "created_at": 1770368000.0,
+      "url": "https://github.com/GoogleCloudPlatform/microservices-demo/issues/1019"
+    },
+    {
+      "number": 1020,
+      "title": "Deadlock detected during rapid checkout concurrency in recommendationservice",
+      "body": "Reported by @nathan-l for recommendationservice. Multiple simultaneous requests can lock session state.",
+      "author": "nathan-l",
+      "service": "recommendationservice",
+      "state": "closed",
+      "created_at": 1770440000.0,
+      "url": "https://github.com/GoogleCloudPlatform/microservices-demo/issues/1020"
+    },
+    {
+      "number": 1021,
+      "title": "Deadlock detected during rapid checkout concurrency in adservice",
+      "body": "Reported by @sam-h for adservice. Multiple simultaneous requests can lock session state.",
+      "author": "sam-h",
+      "service": "adservice",
+      "state": "closed",
+      "created_at": 1770512000.0,
+      "url": "https://github.com/GoogleCloudPlatform/microservices-demo/issues/1021"
+    },
+    {
+      "number": 1022,
+      "title": "Deadlock detected during rapid checkout concurrency in loadgenerator",
+      "body": "Reported by @tarun-g for loadgenerator. Multiple simultaneous requests can lock session state.",
+      "author": "tarun-g",
+      "service": "loadgenerator",
+      "state": "closed",
+      "created_at": 1770584000.0,
+      "url": "https://github.com/GoogleCloudPlatform/microservices-demo/issues/1022"
+    },
+    {
+      "number": 1023,
+      "title": "Deprecate legacy currency conversion in favor of batch rate cache",
+      "body": "Reported by @the-red-eye for paymentservice. Current per-request conversion creates unnecessary downstream load.",
+      "author": "the-red-eye",
+      "service": "paymentservice",
+      "state": "closed",
+      "created_at": 1770656000.0,
+      "url": "https://github.com/GoogleCloudPlatform/microservices-demo/issues/1023"
+    },
+    {
+      "number": 1024,
+      "title": "Deprecate legacy currency conversion in favor of batch rate cache",
+      "body": "Reported by @mario-garcia for cartservice. Current per-request conversion creates unnecessary downstream load.",
+      "author": "mario-garcia",
+      "service": "cartservice",
+      "state": "closed",
+      "created_at": 1770728000.0,
+      "url": "https://github.com/GoogleCloudPlatform/microservices-demo/issues/1024"
+    },
+    {
+      "number": 1025,
+      "title": "Deprecate legacy currency conversion in favor of batch rate cache",
+      "body": "Reported by @ahmetb for checkoutservice. Current per-request conversion creates unnecessary downstream load.",
+      "author": "ahmetb",
+      "service": "checkoutservice",
+      "state": "closed",
+      "created_at": 1770800000.0,
+      "url": "https://github.com/GoogleCloudPlatform/microservices-demo/issues/1025"
+    },
+    {
+      "number": 1026,
+      "title": "Deprecate legacy currency conversion in favor of batch rate cache",
+      "body": "Reported by @yuri-t for frontend. Current per-request conversion creates unnecessary downstream load.",
+      "author": "yuri-t",
+      "service": "frontend",
+      "state": "closed",
+      "created_at": 1770872000.0,
+      "url": "https://github.com/GoogleCloudPlatform/microservices-demo/issues/1026"
+    },
+    {
+      "number": 1027,
+      "title": "Deprecate legacy currency conversion in favor of batch rate cache",
+      "body": "Reported by @daniel-orozco for currencyservice. Current per-request conversion creates unnecessary downstream load.",
+      "author": "daniel-orozco",
+      "service": "currencyservice",
+      "state": "closed",
+      "created_at": 1770944000.0,
+      "url": "https://github.com/GoogleCloudPlatform/microservices-demo/issues/1027"
+    },
+    {
+      "number": 1028,
+      "title": "Deprecate legacy currency conversion in favor of batch rate cache",
+      "body": "Reported by @saksham-g for productcatalogservice. Current per-request conversion creates unnecessary downstream load.",
+      "author": "saksham-g",
+      "service": "productcatalogservice",
+      "state": "closed",
+      "created_at": 1771016000.0,
+      "url": "https://github.com/GoogleCloudPlatform/microservices-demo/issues/1028"
+    },
+    {
+      "number": 1029,
+      "title": "Deprecate legacy currency conversion in favor of batch rate cache",
+      "body": "Reported by @elena-k for shippingservice. Current per-request conversion creates unnecessary downstream load.",
+      "author": "elena-k",
+      "service": "shippingservice",
+      "state": "closed",
+      "created_at": 1771088000.0,
+      "url": "https://github.com/GoogleCloudPlatform/microservices-demo/issues/1029"
+    },
+    {
+      "number": 1030,
+      "title": "Deprecate legacy currency conversion in favor of batch rate cache",
+      "body": "Reported by @lisa-w for emailservice. Current per-request conversion creates unnecessary downstream load.",
+      "author": "lisa-w",
+      "service": "emailservice",
+      "state": "closed",
+      "created_at": 1771160000.0,
+      "url": "https://github.com/GoogleCloudPlatform/microservices-demo/issues/1030"
+    },
+    {
+      "number": 1031,
+      "title": "Deprecate legacy currency conversion in favor of batch rate cache",
+      "body": "Reported by @nathan-l for recommendationservice. Current per-request conversion creates unnecessary downstream load.",
+      "author": "nathan-l",
+      "service": "recommendationservice",
+      "state": "closed",
+      "created_at": 1771232000.0,
+      "url": "https://github.com/GoogleCloudPlatform/microservices-demo/issues/1031"
+    },
+    {
+      "number": 1032,
+      "title": "Deprecate legacy currency conversion in favor of batch rate cache",
+      "body": "Reported by @sam-h for adservice. Current per-request conversion creates unnecessary downstream load.",
+      "author": "sam-h",
+      "service": "adservice",
+      "state": "closed",
+      "created_at": 1771304000.0,
+      "url": "https://github.com/GoogleCloudPlatform/microservices-demo/issues/1032"
+    },
+    {
+      "number": 1033,
+      "title": "Deprecate legacy currency conversion in favor of batch rate cache",
+      "body": "Reported by @tarun-g for loadgenerator. Current per-request conversion creates unnecessary downstream load.",
+      "author": "tarun-g",
+      "service": "loadgenerator",
+      "state": "closed",
+      "created_at": 1771376000.0,
+      "url": "https://github.com/GoogleCloudPlatform/microservices-demo/issues/1033"
+    },
+    {
+      "number": 1034,
+      "title": "Unexpected 503 errors reported by clients for paymentservice",
+      "body": "Reported by @the-red-eye for paymentservice. Client proxy logs indicate upstream connection reset by peer.",
+      "author": "the-red-eye",
+      "service": "paymentservice",
+      "state": "open",
+      "created_at": 1771448000.0,
+      "url": "https://github.com/GoogleCloudPlatform/microservices-demo/issues/1034"
+    },
+    {
+      "number": 1035,
+      "title": "Unexpected 503 errors reported by clients for cartservice",
+      "body": "Reported by @mario-garcia for cartservice. Client proxy logs indicate upstream connection reset by peer.",
+      "author": "mario-garcia",
+      "service": "cartservice",
+      "state": "open",
+      "created_at": 1771520000.0,
+      "url": "https://github.com/GoogleCloudPlatform/microservices-demo/issues/1035"
+    },
+    {
+      "number": 1036,
+      "title": "Unexpected 503 errors reported by clients for checkoutservice",
+      "body": "Reported by @ahmetb for checkoutservice. Client proxy logs indicate upstream connection reset by peer.",
+      "author": "ahmetb",
+      "service": "checkoutservice",
+      "state": "open",
+      "created_at": 1771592000.0,
+      "url": "https://github.com/GoogleCloudPlatform/microservices-demo/issues/1036"
+    },
+    {
+      "number": 1037,
+      "title": "Unexpected 503 errors reported by clients for frontend",
+      "body": "Reported by @yuri-t for frontend. Client proxy logs indicate upstream connection reset by peer.",
+      "author": "yuri-t",
+      "service": "frontend",
+      "state": "open",
+      "created_at": 1771664000.0,
+      "url": "https://github.com/GoogleCloudPlatform/microservices-demo/issues/1037"
+    },
+    {
+      "number": 1038,
+      "title": "Unexpected 503 errors reported by clients for currencyservice",
+      "body": "Reported by @daniel-orozco for currencyservice. Client proxy logs indicate upstream connection reset by peer.",
+      "author": "daniel-orozco",
+      "service": "currencyservice",
+      "state": "open",
+      "created_at": 1771736000.0,
+      "url": "https://github.com/GoogleCloudPlatform/microservices-demo/issues/1038"
+    },
+    {
+      "number": 1039,
+      "title": "Unexpected 503 errors reported by clients for productcatalogservice",
+      "body": "Reported by @saksham-g for productcatalogservice. Client proxy logs indicate upstream connection reset by peer.",
+      "author": "saksham-g",
+      "service": "productcatalogservice",
+      "state": "open",
+      "created_at": 1771808000.0,
+      "url": "https://github.com/GoogleCloudPlatform/microservices-demo/issues/1039"
+    },
+    {
+      "number": 1040,
+      "title": "Unexpected 503 errors reported by clients for shippingservice",
+      "body": "Reported by @elena-k for shippingservice. Client proxy logs indicate upstream connection reset by peer.",
+      "author": "elena-k",
+      "service": "shippingservice",
+      "state": "open",
+      "created_at": 1771880000.0,
+      "url": "https://github.com/GoogleCloudPlatform/microservices-demo/issues/1040"
+    },
+    {
+      "number": 1041,
+      "title": "Unexpected 503 errors reported by clients for emailservice",
+      "body": "Reported by @lisa-w for emailservice. Client proxy logs indicate upstream connection reset by peer.",
+      "author": "lisa-w",
+      "service": "emailservice",
+      "state": "open",
+      "created_at": 1771952000.0,
+      "url": "https://github.com/GoogleCloudPlatform/microservices-demo/issues/1041"
+    },
+    {
+      "number": 1042,
+      "title": "Unexpected 503 errors reported by clients for recommendationservice",
+      "body": "Reported by @nathan-l for recommendationservice. Client proxy logs indicate upstream connection reset by peer.",
+      "author": "nathan-l",
+      "service": "recommendationservice",
+      "state": "open",
+      "created_at": 1772024000.0,
+      "url": "https://github.com/GoogleCloudPlatform/microservices-demo/issues/1042"
+    },
+    {
+      "number": 1043,
+      "title": "Unexpected 503 errors reported by clients for adservice",
+      "body": "Reported by @sam-h for adservice. Client proxy logs indicate upstream connection reset by peer.",
+      "author": "sam-h",
+      "service": "adservice",
+      "state": "open",
+      "created_at": 1772096000.0,
+      "url": "https://github.com/GoogleCloudPlatform/microservices-demo/issues/1043"
+    },
+    {
+      "number": 1044,
+      "title": "Unexpected 503 errors reported by clients for loadgenerator",
+      "body": "Reported by @tarun-g for loadgenerator. Client proxy logs indicate upstream connection reset by peer.",
+      "author": "tarun-g",
+      "service": "loadgenerator",
+      "state": "open",
+      "created_at": 1772168000.0,
+      "url": "https://github.com/GoogleCloudPlatform/microservices-demo/issues/1044"
+    },
+    {
+      "number": 1045,
+      "title": "Investigate high memory footprint in paymentservice after deployment",
+      "body": "Reported by @the-red-eye for paymentservice. RSS memory climbs steadily over 48 hours without leveling off.",
+      "author": "the-red-eye",
+      "service": "paymentservice",
+      "state": "closed",
+      "created_at": 1772240000.0,
+      "url": "https://github.com/GoogleCloudPlatform/microservices-demo/issues/1045"
+    },
+    {
+      "number": 1046,
+      "title": "Investigate high memory footprint in cartservice after deployment",
+      "body": "Reported by @mario-garcia for cartservice. RSS memory climbs steadily over 48 hours without leveling off.",
+      "author": "mario-garcia",
+      "service": "cartservice",
+      "state": "closed",
+      "created_at": 1772312000.0,
+      "url": "https://github.com/GoogleCloudPlatform/microservices-demo/issues/1046"
+    },
+    {
+      "number": 1047,
+      "title": "Investigate high memory footprint in checkoutservice after deployment",
+      "body": "Reported by @ahmetb for checkoutservice. RSS memory climbs steadily over 48 hours without leveling off.",
+      "author": "ahmetb",
+      "service": "checkoutservice",
+      "state": "closed",
+      "created_at": 1772384000.0,
+      "url": "https://github.com/GoogleCloudPlatform/microservices-demo/issues/1047"
+    },
+    {
+      "number": 1048,
+      "title": "Investigate high memory footprint in frontend after deployment",
+      "body": "Reported by @yuri-t for frontend. RSS memory climbs steadily over 48 hours without leveling off.",
+      "author": "yuri-t",
+      "service": "frontend",
+      "state": "closed",
+      "created_at": 1772456000.0,
+      "url": "https://github.com/GoogleCloudPlatform/microservices-demo/issues/1048"
+    },
+    {
+      "number": 1049,
+      "title": "Investigate high memory footprint in currencyservice after deployment",
+      "body": "Reported by @daniel-orozco for currencyservice. RSS memory climbs steadily over 48 hours without leveling off.",
+      "author": "daniel-orozco",
+      "service": "currencyservice",
+      "state": "closed",
+      "created_at": 1772528000.0,
+      "url": "https://github.com/GoogleCloudPlatform/microservices-demo/issues/1049"
+    },
+    {
+      "number": 1050,
+      "title": "Investigate high memory footprint in productcatalogservice after deployment",
+      "body": "Reported by @saksham-g for productcatalogservice. RSS memory climbs steadily over 48 hours without leveling off.",
+      "author": "saksham-g",
+      "service": "productcatalogservice",
+      "state": "closed",
+      "created_at": 1772600000.0,
+      "url": "https://github.com/GoogleCloudPlatform/microservices-demo/issues/1050"
+    },
+    {
+      "number": 1051,
+      "title": "Investigate high memory footprint in shippingservice after deployment",
+      "body": "Reported by @elena-k for shippingservice. RSS memory climbs steadily over 48 hours without leveling off.",
+      "author": "elena-k",
+      "service": "shippingservice",
+      "state": "closed",
+      "created_at": 1772672000.0,
+      "url": "https://github.com/GoogleCloudPlatform/microservices-demo/issues/1051"
+    },
+    {
+      "number": 1052,
+      "title": "Investigate high memory footprint in emailservice after deployment",
+      "body": "Reported by @lisa-w for emailservice. RSS memory climbs steadily over 48 hours without leveling off.",
+      "author": "lisa-w",
+      "service": "emailservice",
+      "state": "closed",
+      "created_at": 1772744000.0,
+      "url": "https://github.com/GoogleCloudPlatform/microservices-demo/issues/1052"
+    },
+    {
+      "number": 1053,
+      "title": "Investigate high memory footprint in recommendationservice after deployment",
+      "body": "Reported by @nathan-l for recommendationservice. RSS memory climbs steadily over 48 hours without leveling off.",
+      "author": "nathan-l",
+      "service": "recommendationservice",
+      "state": "closed",
+      "created_at": 1772816000.0,
+      "url": "https://github.com/GoogleCloudPlatform/microservices-demo/issues/1053"
+    },
+    {
+      "number": 1054,
+      "title": "Investigate high memory footprint in adservice after deployment",
+      "body": "Reported by @sam-h for adservice. RSS memory climbs steadily over 48 hours without leveling off.",
+      "author": "sam-h",
+      "service": "adservice",
+      "state": "closed",
+      "created_at": 1772888000.0,
+      "url": "https://github.com/GoogleCloudPlatform/microservices-demo/issues/1054"
+    },
+    {
+      "number": 1055,
+      "title": "Investigate high memory footprint in loadgenerator after deployment",
+      "body": "Reported by @tarun-g for loadgenerator. RSS memory climbs steadily over 48 hours without leveling off.",
+      "author": "tarun-g",
+      "service": "loadgenerator",
+      "state": "closed",
+      "created_at": 1772960000.0,
+      "url": "https://github.com/GoogleCloudPlatform/microservices-demo/issues/1055"
+    }
+  ]
+}

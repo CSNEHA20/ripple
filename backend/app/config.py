@@ -39,7 +39,12 @@ class Settings(BaseSettings):
     openai_api_key: str | None = None
     anthropic_api_key: str | None = None
     gemini_api_key: str | None = None
+    nemotron_api_key: str | None = None
+    nvidia_api_key: str | None = None
+    nvidia_base_url: str = "https://integrate.api.nvidia.com/v1"
+    nemotron_model: str = "nvidia/llama-3.1-nemotron-70b-instruct"
     github_token: str | None = None
+    data_dir: str = "/app/data"
 
     model_config = SettingsConfigDict(
         env_file=".env",

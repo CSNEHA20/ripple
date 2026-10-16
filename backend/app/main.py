@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.tenancy import TenantGraph, ensure_tenant, get_falkordb_client, sanitize_tenant_id
 from app.schema import ensure_tenant_schema
+from app.ingest.bootstrap import bootstrap_tenant_all, bootstrap_second_tenant
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 logger = logging.getLogger("ripple.backend")
@@ -16,12 +17,12 @@ async def lifespan(app: FastAPI):
     logger.info("Ripple backend starting up. Checking FalkorDB connection...")
     try:
         client = get_falkordb_client()
-        # Initialize default tenants
-        ensure_tenant("storefront", db=client)
-        ensure_tenant("payments", db=client)
-        logger.info("FalkorDB connection established and default tenants bootstrapped.")
+        # Initialize and ingest default tenants
+        bootstrap_tenant_all("storefront")
+        bootstrap_second_tenant("payments")
+        logger.info("FalkorDB connected: storefront and payments tenants bootstrapped.")
     except Exception as e:
-        logger.warning(f"FalkorDB connection on startup could not be completed: {e}")
+        logger.warning(f"FalkorDB bootstrap on startup could not be completed: {e}")
     yield
     logger.info("Ripple backend shutting down.")
 
@@ -78,21 +79,69 @@ def health_check():
 @app.post("/tenants/{tenant_id}/bootstrap")
 @app.post("/api/tenants/{tenant_id}/bootstrap")
 def bootstrap_tenant(tenant_id: str):
-    """Idempotently bootstrap a tenant graph and ensure its schema indexes."""
+    """Idempotently bootstrap a tenant graph, ensure its schema indexes, and ingest baseline data."""
     try:
         clean_id = sanitize_tenant_id(tenant_id)
-        graph = ensure_tenant(clean_id)
-        schema_results = ensure_tenant_schema(graph)
+        if clean_id == "payments":
+            data = bootstrap_second_tenant("payments")
+            graph = TenantGraph(clean_id)
+            schema_indexes = ensure_tenant_schema(graph)
+        elif clean_id == "storefront" or clean_id == "default":
+            data = bootstrap_tenant_all(clean_id)
+            graph = TenantGraph(clean_id)
+            schema_indexes = ensure_tenant_schema(graph)
+        else:
+            graph = ensure_tenant(clean_id)
+            schema_indexes = ensure_tenant_schema(graph)
+            data = {
+                "tenant_id": graph.tenant_id,
+                "graph_name": graph.graph_name,
+                "schema_indexes": schema_indexes,
+            }
+
         return {
             "status": "success",
             "tenant_id": clean_id,
-            "graph_name": graph.graph_name,
-            "schema_indexes": schema_results,
+            "graph_name": f"tenant_{clean_id}",
+            "schema_indexes": schema_indexes,
+            "data": data,
             "message": f"Tenant '{clean_id}' successfully bootstrapped and ready.",
         }
     except Exception as e:
         logger.error(f"Failed to bootstrap tenant '{tenant_id}': {e}")
         raise HTTPException(status_code=500, detail=f"Failed to bootstrap tenant: {str(e)}")
+
+
+@app.post("/tenants/{tenant_id}/ingest")
+@app.post("/api/tenants/{tenant_id}/ingest")
+def ingest_tenant(tenant_id: str):
+    """Trigger full data ingestion for the specified tenant."""
+    return bootstrap_tenant(tenant_id)
+
+
+@app.get("/tenants/{tenant_id}/stats")
+@app.get("/api/tenants/{tenant_id}/stats")
+def tenant_stats(tenant_id: str):
+    """Get node and relationship statistics for a tenant graph."""
+    clean_id = sanitize_tenant_id(tenant_id)
+    graph = TenantGraph(tenant_id=clean_id)
+    try:
+        node_res = graph.query("MATCH (n) RETURN labels(n)[0] AS label, count(n) AS count ORDER BY count DESC")
+        rel_res = graph.query("MATCH ()-[r]->() RETURN type(r) AS rel_type, count(r) AS count ORDER BY count DESC")
+
+        nodes = {row[0]: row[1] for row in (node_res.result_set if node_res else [])}
+        relationships = {row[0]: row[1] for row in (rel_res.result_set if rel_res else [])}
+
+        return {
+            "tenant_id": clean_id,
+            "graph_name": graph.graph_name,
+            "nodes": nodes,
+            "total_nodes": sum(nodes.values()),
+            "relationships": relationships,
+            "total_relationships": sum(relationships.values()),
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get stats for tenant {tenant_id}: {str(e)}")
 
 
 @app.get("/api/smoke")
