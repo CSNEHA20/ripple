@@ -1,18 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import './App.css';
 import {
-  Activity,
-  Layers,
-  Brain,
-  GitCompare,
-  BarChart2,
-  Search,
-  MessageSquare,
-  Zap,
-} from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import {
   checkHealth,
   getScenarios,
   loadScenario,
@@ -38,6 +26,9 @@ import {
   type TraceStep,
 } from './api';
 
+import { Sidebar, type ViewId } from './components/Sidebar';
+import { TopNav } from './components/TopNav';
+import { ServicesView, IncidentsView, MemoryView, SettingsView, ModuleView } from './components/ExplorerViews';
 import { AlertConsole } from './components/AlertConsole';
 import { AgentTimeline } from './components/AgentTimeline';
 import { GraphCanvas } from './components/GraphCanvas';
@@ -48,10 +39,14 @@ import { BenchmarkTab } from './components/BenchmarkTab';
 import { AskBrainDrawer } from './components/AskBrainDrawer';
 import { InspectorDrawer } from './components/InspectorDrawer';
 import { ApprovalGate } from './components/ApprovalGate';
+import { ScenarioDrawer } from './components/ScenarioDrawer';
 
 export default function App() {
+  // Theme state: defaults to dark matching Image 2, toggleable to light matching Image 1
+  const [theme, setTheme] = useState<'dark' | 'light'>('dark');
+
   // Navigation & View Mode
-  const [activeTab, setActiveTab] = useState<'incident' | 'counterfactual' | 'benchmark'>('incident');
+  const [activeTab, setActiveTab] = useState<ViewId>('incident');
   const [tenant, setTenant] = useState<string>('storefront');
   const [mode, setMode] = useState<'replay' | 'live'>('replay');
   const [healthOk, setHealthOk] = useState<boolean>(true);
@@ -64,9 +59,11 @@ export default function App() {
     'High HTTP 500 error rate on checkout payment authorize'
   );
   const [isRunning, setIsRunning] = useState<boolean>(false);
+  const [elapsedSeconds, setElapsedSeconds] = useState<number>(0);
+  const [isScenarioDrawerOpen, setIsScenarioDrawerOpen] = useState<boolean>(false);
 
   // Active Incident State
-  const [currentIncidentId, setCurrentIncidentId] = useState<string>('');
+  const [currentIncidentId, setCurrentIncidentId] = useState<string>('INC-4029');
   const [activePhase, setActivePhase] = useState<string>('triage');
   const [events, setEvents] = useState<SSEEvent[]>([]);
   const [hypotheses, setHypotheses] = useState<HypothesisItem[]>([]);
@@ -76,11 +73,12 @@ export default function App() {
   const [pendingActions, setPendingActions] = useState<PendingAction[]>([]);
   const [isProcessingAction, setIsProcessingAction] = useState<boolean>(false);
 
-  // Graph State
+  // Graph State & Entity Filter
   const [graphNodes, setGraphNodes] = useState<GraphNode[]>([]);
   const [graphEdges, setGraphEdges] = useState<GraphEdge[]>([]);
   const [highlightedNodes, setHighlightedNodes] = useState<Set<string>>(new Set());
   const [highlightedEdges, setHighlightedEdges] = useState<Set<string>>(new Set());
+  const [selectedNodeFilter, setSelectedNodeFilter] = useState<string | null>(null);
   const [asOfNow, setAsOfNow] = useState<boolean>(false);
   const [isReplaying, setIsReplaying] = useState<boolean>(false);
   const fullTraceRef = useRef<any>(null);
@@ -99,6 +97,80 @@ export default function App() {
   // Benchmark State
   const [benchmarkReport, setBenchmarkReport] = useState<BenchmarkReportResponse | null>(null);
   const [isBenchRunning, setIsBenchRunning] = useState<boolean>(false);
+
+  // Sync theme class on document element
+  useEffect(() => {
+    if (theme === 'dark') {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+  }, [theme]);
+
+  const toggleTheme = () => {
+    setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'));
+  };
+
+  // Scroll to top whenever the view changes
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, [activeTab]);
+
+  const VIEW_TITLES: Record<ViewId, string> = {
+    incident: 'Incident Investigation',
+    counterfactual: 'Counterfactual (What-If)',
+    benchmark: 'Benchmark & Calibration',
+    services: 'Services',
+    incidents: 'Incidents',
+    memory: 'Memory',
+    runbooks: 'Runbooks',
+    people: 'People',
+    docs: 'Docs & PRs',
+    settings: 'Settings',
+  };
+
+  // Keyboard shortcut Ctrl+K to open scenario drawer / search
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+        e.preventDefault();
+        setIsScenarioDrawerOpen((prev) => !prev);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
+  // Load functions
+  const loadInitialGraph = async () => {
+    try {
+      const data = await getGraphSubgraph({ radius: 3 }, tenant);
+      setGraphNodes(data.nodes);
+      setGraphEdges(data.edges);
+    } catch (err) {
+      console.error('Failed to load graph:', err);
+    }
+  };
+
+  const loadBenchmarkData = async () => {
+    try {
+      const report = await getBenchmarkReport();
+      setBenchmarkReport(report);
+    } catch (err) {
+      console.warn('Benchmark report not pre-computed yet:', err);
+    }
+  };
+
+  // Live timer while crew is running
+  useEffect(() => {
+    let timer: any;
+    if (isRunning) {
+      timer = setInterval(() => {
+        setElapsedSeconds((prev) => prev + 1);
+      }, 1000);
+    }
+    return () => clearInterval(timer);
+  }, [isRunning]);
 
   // Initial load
   useEffect(() => {
@@ -121,42 +193,29 @@ export default function App() {
     loadBenchmarkData();
   }, [tenant]);
 
-  const loadInitialGraph = async () => {
-    try {
-      const data = await getGraphSubgraph({ radius: 3 }, tenant);
-      setGraphNodes(data.nodes);
-      setGraphEdges(data.edges);
-    } catch (err) {
-      console.error('Failed to load graph:', err);
-    }
-  };
-
-  const loadBenchmarkData = async () => {
-    try {
-      const report = await getBenchmarkReport();
-      setBenchmarkReport(report);
-    } catch (err) {
-      console.warn('Benchmark report not pre-computed yet:', err);
-    }
-  };
-
   const handleSelectScenario = (id: string) => {
     setSelectedScenarioId(id);
     const sc = scenarios.find((s) => s.id === id);
     if (sc) {
       setCustomService(sc.alert.service);
       setCustomAlertText(sc.alert.text);
+      setHypotheses([]);
+      setMemoryData(null);
+      setEvents([]);
+      setSelectedNodeFilter(null);
     }
   };
 
   // Launch Agent Crew
   const handleRunCrew = async () => {
     setIsRunning(true);
+    setElapsedSeconds(0);
     setEvents([]);
     setPendingActions([]);
     setPendingEvidenceRequest(null);
     setHighlightedNodes(new Set());
     setHighlightedEdges(new Set());
+    setActivePhase('triage');
 
     try {
       // 1. If scenario selected, seed graph
@@ -175,35 +234,73 @@ export default function App() {
         tenant
       );
 
-      const incId = resp.data?.incident_id;
+      const incId = resp.data?.incident_id || `INC-${Math.floor(1000 + Math.random() * 9000)}`;
       setCurrentIncidentId(incId);
       fullTraceRef.current = resp.trace;
 
-      // Highlight trace nodes
-      if (resp.trace?.nodes) {
-        setHighlightedNodes(new Set(resp.trace.nodes));
-      }
-      if (resp.trace?.edges) {
-        setHighlightedEdges(new Set(resp.trace.edges));
+      if (resp.trace?.nodes) setHighlightedNodes(new Set(resp.trace.nodes));
+      if (resp.trace?.edges) setHighlightedEdges(new Set(resp.trace.edges));
+
+      const newEvents: SSEEvent[] = [
+        {
+          incident_id: incId,
+          event: 'incident_opened',
+          data: { service: customService, text: customAlertText },
+          ts: Date.now() / 1000 - 4,
+        },
+        {
+          incident_id: incId,
+          event: 'agent_started',
+          data: { agent: 'triage_agent', role: 'triage' },
+          ts: Date.now() / 1000 - 3,
+        },
+      ];
+
+      if (resp.trace?.steps) {
+        resp.trace.steps.forEach((st: TraceStep, idx: number) => {
+          newEvents.push({
+            incident_id: incId,
+            event: 'tool_called',
+            data: {
+              tool: st.tool,
+              cypher: st.cypher,
+              result_count: st.rows_count || 1,
+              summary: st.summary,
+            },
+            ts: Date.now() / 1000 - 2 + idx * 0.2,
+          });
+        });
       }
 
-      // Process Investigation Hypotheses
       const invHypotheses = resp.data?.investigation?.hypotheses || [];
       setHypotheses(invHypotheses);
       if (invHypotheses.length > 0) {
         setSelectedHypothesisId(invHypotheses[0].id);
+        newEvents.push({
+          incident_id: incId,
+          event: 'hypotheses_ranked',
+          data: {
+            count: invHypotheses.length,
+            top_hypothesis: invHypotheses[0],
+          },
+          ts: Date.now() / 1000 - 1,
+        });
       }
 
       if (resp.data?.investigation?.evidence_request_task) {
         setPendingEvidenceRequest(resp.data.investigation.evidence_request_task);
+        newEvents.push({
+          incident_id: incId,
+          event: 'evidence_requested',
+          data: { task: resp.data.investigation.evidence_request_task },
+          ts: Date.now() / 1000 - 0.5,
+        });
       }
 
-      // Process Memory Recall
       if (resp.data?.triage?.recalled_memory) {
         setMemoryData(resp.data.triage.recalled_memory);
       }
 
-      // Check for pending actions awaiting approval
       if (resp.data?.response?.action?.status === 'proposed') {
         setPendingActions([resp.data.response.action]);
         setActivePhase('responder');
@@ -211,7 +308,7 @@ export default function App() {
         setActivePhase('verifier');
       }
 
-      // Refresh graph to show touched state
+      setEvents(newEvents);
       await loadInitialGraph();
     } catch (err) {
       console.error('Run crew error:', err);
@@ -227,7 +324,6 @@ export default function App() {
       await approveAction(currentIncidentId, actionId, selectedScenarioId, tenant);
       setPendingActions([]);
       setActivePhase('verifier');
-      // Fetch latest incident state
       const updated = await getIncident(currentIncidentId, tenant);
       if (updated.blackboard?.hypotheses) {
         setHypotheses(updated.blackboard.hypotheses);
@@ -243,7 +339,7 @@ export default function App() {
   const handleRejectAction = async (actionId: string) => {
     setIsProcessingAction(true);
     try {
-      await rejectAction(currentIncidentId, actionId, 'Rejected by SRE on-call operator', tenant);
+      await rejectAction(currentIncidentId, actionId, 'Rejected by operator', tenant);
       setPendingActions([]);
     } catch (err) {
       console.error('Rejection failed:', err);
@@ -311,271 +407,258 @@ export default function App() {
   };
 
   const handleSelectGraphNode = (node: any) => {
+    const nodeName = node.name || node.id;
+    setSelectedNodeFilter(nodeName);
+    setHighlightedNodes(new Set([nodeName]));
+
+    const matchingHyp = hypotheses.find((h) => h.service?.toLowerCase() === nodeName?.toLowerCase());
+    if (matchingHyp) {
+      setSelectedHypothesisId(matchingHyp.id);
+    }
     setSelectedGraphNode(node);
-    setIsInspectorOpen(true);
   };
 
   return (
-    <div className="ripple-dashboard">
-      {/* Top Navbar */}
-      <header className="top-nav">
-        <div className="brand-section">
-          <div className="brand-logo-container">
-            <span className="brand-name">RippleAI</span>
-          </div>
+    <div className="ripple-app-layout">
+      {/* Immersive ambient backdrop */}
+      <div className="ambient-bg" aria-hidden>
+        <div className="ambient-orb a" />
+        <div className="ambient-orb b" />
+      </div>
 
-          {/* Center Soundwave Pulse Motif from SonicAI reference */}
-          <div className="center-waveform">
-            <div className="waveform-bars">
-              <div className="wave-bar" />
-              <div className="wave-bar" />
-              <div className="wave-bar" />
-              <div className="wave-bar" />
-              <div className="wave-bar" />
-              <div className="wave-bar" />
-            </div>
-            <span>Graph Pulse Active</span>
-          </div>
-        </div>
+      {/* 1. Left Sidebar Navigation */}
+      <Sidebar
+        activeTab={activeTab}
+        onChangeTab={setActiveTab}
+        onOpenAskBrain={() => setIsAskDrawerOpen(true)}
+        tenant={tenant}
+        onChangeTenant={setTenant}
+        healthOk={healthOk}
+      />
 
-        {/* Navigation Tabs */}
-        <nav className="nav-tabs">
-          <button
-            className={`tab-btn ${activeTab === 'incident' ? 'active' : ''}`}
-            onClick={() => setActiveTab('incident')}
-          >
-            <Activity size={14} />
-            <span>Incident Investigation</span>
-          </button>
-          <button
-            className={`tab-btn ${activeTab === 'counterfactual' ? 'active' : ''}`}
-            onClick={() => setActiveTab('counterfactual')}
-          >
-            <GitCompare size={14} />
-            <span>Counterfactual (What-If)</span>
-          </button>
-          <button
-            className={`tab-btn ${activeTab === 'benchmark' ? 'active' : ''}`}
-            onClick={() => setActiveTab('benchmark')}
-          >
-            <BarChart2 size={14} />
-            <span>Benchmark &amp; Calibration</span>
-          </button>
-        </nav>
-
-        <div className="nav-actions">
-          <Button
-            variant="outline"
-            size="sm"
-            className="rounded-full gap-2 border-white/20 bg-transparent hover:bg-white/10 text-white cursor-pointer"
-            onClick={() => setIsAskDrawerOpen(true)}
-          >
-            <MessageSquare size={14} />
-            <span>Ask Company Brain</span>
-          </Button>
-        </div>
-      </header>
-
-      {/* Main Container */}
-      <main className="dashboard-main">
-        {/* SonicAI Hero Section */}
-        <section className="sonic-hero-section">
-          <div className="sonic-hero-top">
-            <div className="sonic-hero-headline-box">
-              <h1 className="sonic-hero-title">
-                Your AI-Powered <br />
-                <span className="sonic-highlight-cream">on-call, your way</span>
-              </h1>
-            </div>
-
-            <div className="sonic-hero-desc-box">
-              <p className="sonic-hero-text">
-                Orchestrate autonomous incident triage, root cause diagnosis, and runbook execution
-                with our graph-native SRE crew. Triage, simulate counterfactuals, and learn across
-                outages effortlessly.
-              </p>
-              <div className="sonic-hero-cta-row">
-                <Button
-                  size="default"
-                  className="sonic-btn-primary rounded-full cursor-pointer hover:scale-105 transition-all"
-                  onClick={handleRunCrew}
-                  disabled={isRunning}
-                >
-                  {isRunning ? 'Investigating...' : 'Start Crew Run'}
-                </Button>
-                <Button
-                  variant="outline"
-                  size="default"
-                  className="sonic-btn-secondary rounded-full cursor-pointer hover:bg-white/10"
-                  onClick={() => setIsAskDrawerOpen(true)}
-                >
-                  Ask Brain
-                </Button>
-              </div>
-            </div>
-          </div>
-
-          {/* Trio Feature Cards with Icons */}
-          <div className="sonic-feature-trio">
-            <div className="sonic-feature-item">
-              <div className="feature-icon-badge">
-                <Layers size={14} />
-              </div>
-              <div className="feature-item-text">
-                <strong>Full Graph Blackboard</strong>
-                <span>Real-time Cypher execution tracing &amp; causal DAG traversal</span>
-              </div>
-            </div>
-
-            <div className="sonic-feature-item">
-              <div className="feature-icon-badge">
-                <Brain size={14} />
-              </div>
-              <div className="feature-item-text">
-                <strong>Outcome Memory Engine</strong>
-                <span>Past failure-mode suppression &amp; calibrated runbooks</span>
-              </div>
-            </div>
-
-            <div className="sonic-feature-item">
-              <div className="feature-icon-badge">
-                <GitCompare size={14} />
-              </div>
-              <div className="feature-item-text">
-                <strong>Counterfactual Sandbox</strong>
-                <span>Live what-if hypothetical diffing &amp; PageRank blast radius</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Editorial Tagline from Reference Image */}
-          <div className="sonic-tagline-strip">
-            <span className="tagline-eyebrow">EXPERIENCE AUTONOMOUS INCIDENT RESPONSE</span>
-            <p className="tagline-headline">
-              Incident response that feels truly intelligent. Your infrastructure, your way—<span className="text-cream">Intelligent, Intuitive, Yours</span>
-            </p>
-          </div>
-        </section>
-
-        {/* Alert Console */}
-        <AlertConsole
-          scenarios={scenarios}
-          selectedScenarioId={selectedScenarioId}
-          onSelectScenario={handleSelectScenario}
-          customAlertText={customAlertText}
-          onChangeCustomAlertText={setCustomAlertText}
-          customService={customService}
-          onChangeCustomService={setCustomService}
-          tenant={tenant}
-          onChangeTenant={setTenant}
-          mode={mode}
-          onToggleMode={setMode}
+      {/* 2. Main Workspace Layout */}
+      <div className="ripple-main-content">
+        {/* Top Header Bar */}
+        <TopNav
+          theme={theme}
+          onToggleTheme={toggleTheme}
           isRunning={isRunning}
           onRunCrew={handleRunCrew}
-          healthOk={healthOk}
+          onOpenSearch={() => setIsScenarioDrawerOpen(true)}
+          viewTitle={VIEW_TITLES[activeTab]}
+          mode={mode}
+          onToggleMode={setMode}
+          tenant={tenant}
         />
 
-        {/* Operational Approval Gate if action proposed */}
-        <ApprovalGate
-          pendingActions={pendingActions}
-          incidentId={currentIncidentId}
-          onApprove={handleApproveAction}
-          onReject={handleRejectAction}
-          isProcessing={isProcessingAction}
-        />
-
-        {/* Tab 1: Incident Investigation Workspace */}
-        {activeTab === 'incident' && (
-          <div className="workspace-grid">
-            {/* Left Column: Graph Canvas & Timeline */}
-            <div className="workspace-left-col">
-              <GraphCanvas
-                nodes={graphNodes}
-                edges={graphEdges}
-                highlightedNodes={highlightedNodes}
-                highlightedEdges={highlightedEdges}
-                asOfNow={asOfNow}
-                onToggleTimeTravel={() => setAsOfNow(!asOfNow)}
-                onSelectNode={handleSelectGraphNode}
-                onStartWhyReplay={handleStartWhyReplay}
-                isReplaying={isReplaying}
-              />
-              <AgentTimeline events={events} activePhase={activePhase} />
-            </div>
-
-            {/* Right Column: Hypothesis Board & Memory Panel */}
-            <div className="workspace-right-col">
-              <HypothesisBoard
-                hypotheses={hypotheses}
-                selectedHypothesisId={selectedHypothesisId}
-                onSelectHypothesis={(id) => {
-                  setSelectedHypothesisId(id);
-                  const h = hypotheses.find((x) => x.id === id);
-                  if (h?.service) {
-                    setHighlightedNodes(new Set([h.service]));
-                  }
-                }}
-                pendingEvidenceRequest={pendingEvidenceRequest}
-                onInspectEvidence={handleInspectEvidence}
-              />
-              <MemoryPanel memoryData={memoryData} />
-            </div>
-          </div>
-        )}
-
-        {/* Tab 2: Counterfactual Simulator Workspace */}
-        {activeTab === 'counterfactual' && (
-          <div className="workspace-grid">
-            <div className="workspace-left-col">
-              <GraphCanvas
-                nodes={graphNodes}
-                edges={graphEdges}
-                highlightedNodes={highlightedNodes}
-                highlightedEdges={highlightedEdges}
-                counterfactualMode={{
-                  active: !!counterfactualResult,
-                  observedSet: new Set(counterfactualResult?.only_observed || []),
-                  hypotheticalSet: new Set(counterfactualResult?.only_hypothetical || []),
-                  bothSet: new Set(counterfactualResult?.both || []),
-                }}
-                asOfNow={asOfNow}
-                onToggleTimeTravel={() => setAsOfNow(!asOfNow)}
-                onSelectNode={handleSelectGraphNode}
-              />
-            </div>
-            <div className="workspace-right-col">
-              <CounterfactualPanel
-                services={scenarios.map((s) => s.alert.service).filter(Boolean)}
-                currentIncidentId={currentIncidentId}
-                onRunCounterfactual={handleRunCounterfactual}
-                counterfactualResult={counterfactualResult}
-                isLoading={isCfLoading}
-              />
-            </div>
-          </div>
-        )}
-
-        {/* Tab 3: Benchmark & Calibration Workspace */}
-        {activeTab === 'benchmark' && (
-          <BenchmarkTab
-            reportData={benchmarkReport}
-            onRunBenchmark={handleExecuteBenchmark}
-            isRunning={isBenchRunning}
+        {/* Scrollable Workspace Body */}
+        <div className="main-scroll-body">
+          {activeTab === 'incident' && (
+          <>
+          {/* Incident Investigation Header & Status */}
+          <AlertConsole
+            currentIncidentId={currentIncidentId}
+            scenarios={scenarios}
+            selectedScenarioId={selectedScenarioId}
+            onOpenScenarioDrawer={() => setIsScenarioDrawerOpen(true)}
+            customAlertText={customAlertText}
+            onChangeCustomAlertText={setCustomAlertText}
+            customService={customService}
+            onChangeCustomService={setCustomService}
+            tenant={tenant}
+            onChangeTenant={setTenant}
+            mode={mode}
+            onToggleMode={setMode}
+            isRunning={isRunning}
+            onRunCrew={handleRunCrew}
+            healthOk={healthOk}
+            activePhase={activePhase}
+            elapsedSeconds={elapsedSeconds}
+            hasHypotheses={hypotheses.length > 0}
           />
-        )}
-      </main>
 
-      {/* Drawers */}
+          {/* Operational Approval Gate if safe action proposed */}
+          <ApprovalGate
+            pendingActions={pendingActions}
+            incidentId={currentIncidentId}
+            onApprove={handleApproveAction}
+            onReject={handleRejectAction}
+            isProcessing={isProcessingAction}
+          />
+          </>
+          )}
+
+          {/* Tab 1: Incident Investigation Workspace (60% / 40% Split Grid) */}
+          {activeTab === 'incident' && (
+            <div className="workspace-split-grid">
+              {/* Left Column (60%): System Topology + Activity Timeline */}
+              <div className="split-left-col">
+                <GraphCanvas
+                  nodes={graphNodes}
+                  edges={graphEdges}
+                  highlightedNodes={highlightedNodes}
+                  highlightedEdges={highlightedEdges}
+                  alertingService={customService}
+                  selectedNodeFilter={selectedNodeFilter}
+                  asOfNow={asOfNow}
+                  onToggleTimeTravel={() => setAsOfNow(!asOfNow)}
+                  onSelectNode={handleSelectGraphNode}
+                  onStartWhyReplay={handleStartWhyReplay}
+                  isReplaying={isReplaying}
+                />
+
+                <AgentTimeline
+                  events={events}
+                  activePhase={activePhase}
+                  selectedNodeFilter={selectedNodeFilter}
+                  onClearNodeFilter={() => {
+                    setSelectedNodeFilter(null);
+                    setHighlightedNodes(new Set());
+                  }}
+                />
+              </div>
+
+              {/* Right Column (40%): Ranked Hypotheses + Memory & Runbook */}
+              <div className="split-right-col">
+                <HypothesisBoard
+                  hypotheses={hypotheses}
+                  selectedHypothesisId={selectedHypothesisId}
+                  onSelectHypothesis={(id) => {
+                    setSelectedHypothesisId(id);
+                    const h = hypotheses.find((x) => x.id === id);
+                    if (h?.service) {
+                      setHighlightedNodes(new Set([h.service]));
+                      setSelectedNodeFilter(h.service);
+                    }
+                  }}
+                  pendingEvidenceRequest={pendingEvidenceRequest}
+                  onInspectEvidence={handleInspectEvidence}
+                />
+
+                <MemoryPanel
+                  memoryData={memoryData}
+                  hasHypotheses={hypotheses.length > 0}
+                  onExecuteRunbook={() => {
+                    if (pendingActions.length > 0) {
+                      handleApproveAction(pendingActions[0].id);
+                    } else {
+                      handleRunCrew();
+                    }
+                  }}
+                  isExecuting={isProcessingAction}
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Tab 2: Counterfactual Simulator Workspace */}
+          {activeTab === 'counterfactual' && (
+            <div className="workspace-split-grid">
+              <div className="split-left-col">
+                <GraphCanvas
+                  nodes={graphNodes}
+                  edges={graphEdges}
+                  highlightedNodes={highlightedNodes}
+                  highlightedEdges={highlightedEdges}
+                  alertingService={customService}
+                  counterfactualMode={{
+                    active: !!counterfactualResult,
+                    observedSet: new Set(counterfactualResult?.only_observed || []),
+                    hypotheticalSet: new Set(counterfactualResult?.only_hypothetical || []),
+                    bothSet: new Set(counterfactualResult?.both || []),
+                  }}
+                  asOfNow={asOfNow}
+                  onToggleTimeTravel={() => setAsOfNow(!asOfNow)}
+                  onSelectNode={handleSelectGraphNode}
+                  title="Counterfactual Overlay"
+                  height={620}
+                />
+              </div>
+              <div className="split-right-col">
+                <CounterfactualPanel
+                  services={scenarios.map((s) => s.alert.service).filter(Boolean)}
+                  currentIncidentId={currentIncidentId}
+                  onRunCounterfactual={handleRunCounterfactual}
+                  counterfactualResult={counterfactualResult}
+                  isLoading={isCfLoading}
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Tab 3: Benchmark & Calibration Workspace */}
+          {activeTab === 'benchmark' && (
+            <BenchmarkTab
+              reportData={benchmarkReport}
+              onRunBenchmark={handleExecuteBenchmark}
+              isRunning={isBenchRunning}
+            />
+          )}
+
+          {activeTab === 'services' && (
+            <ServicesView
+              nodes={graphNodes}
+              edges={graphEdges}
+              alertingService={customService}
+              onOpen={(n) => {
+                handleSelectGraphNode(n);
+                setIsInspectorOpen(true);
+              }}
+            />
+          )}
+
+          {activeTab === 'incidents' && (
+            <IncidentsView
+              scenarios={scenarios}
+              selectedScenarioId={selectedScenarioId}
+              onLoad={(id) => {
+                handleSelectScenario(id);
+                setActiveTab('incident');
+              }}
+            />
+          )}
+
+          {activeTab === 'memory' && <MemoryView memoryData={memoryData} onGo={() => setActiveTab('incident')} />}
+
+          {activeTab === 'settings' && (
+            <SettingsView
+              theme={theme}
+              onToggleTheme={toggleTheme}
+              mode={mode}
+              onChangeMode={setMode}
+              tenant={tenant}
+              onChangeTenant={setTenant}
+            />
+          )}
+
+          {(activeTab === 'runbooks' || activeTab === 'people' || activeTab === 'docs') && (
+            <ModuleView view={activeTab} onAskBrain={() => setIsAskDrawerOpen(true)} />
+          )}
+        </div>
+      </div>
+
+      {/* Scenario Library Modal / Drawer */}
+      <ScenarioDrawer
+        isOpen={isScenarioDrawerOpen}
+        onClose={() => setIsScenarioDrawerOpen(false)}
+        scenarios={scenarios}
+        selectedScenarioId={selectedScenarioId}
+        onSelectScenario={handleSelectScenario}
+      />
+
+      {/* Ask Company Brain Drawer */}
       <AskBrainDrawer
         isOpen={isAskDrawerOpen}
         onClose={() => setIsAskDrawerOpen(false)}
         onAsk={(q) => askBrain(q, mode, tenant)}
         onSelectNodeId={(nid) => {
           setHighlightedNodes(new Set([nid]));
+          setSelectedNodeFilter(nid);
           setIsAskDrawerOpen(false);
         }}
       />
 
+      {/* Provenance Deep Trace Inspector Drawer */}
       <InspectorDrawer
         isOpen={isInspectorOpen}
         onClose={() => setIsInspectorOpen(false)}
