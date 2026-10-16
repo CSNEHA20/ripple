@@ -9,6 +9,7 @@ from app.config import settings
 from app.tenancy import TenantGraph, ensure_tenant, get_falkordb_client, sanitize_tenant_id
 from app.schema import ensure_tenant_schema
 from app.ingest.bootstrap import bootstrap_tenant_all, bootstrap_second_tenant
+from app.ingest.embed import embed_text
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 logger = logging.getLogger("ripple.backend")
@@ -144,6 +145,99 @@ def bootstrap_tenant(tenant_id: str):
 def ingest_tenant(tenant_id: str):
     """Trigger full data ingestion for the specified tenant."""
     return bootstrap_tenant(tenant_id)
+
+
+@app.post("/tenants/{tenant_id}/reembed")
+@app.post("/api/tenants/{tenant_id}/reembed")
+def reembed_tenant(tenant_id: str):
+    """Recompute all Incident and Decision embeddings for the tenant graph with the active backend."""
+    try:
+        clean_id = sanitize_tenant_id(tenant_id)
+        graph = TenantGraph(clean_id)
+
+        # 1. Re-embed Incidents
+        inc_res = graph.query("MATCH (i:Incident) RETURN i.id, i.title, i.summary")
+        inc_count = 0
+        if inc_res and inc_res.result_set:
+            for row in inc_res.result_set:
+                iid, title, summary = row[0], row[1] or "", row[2] or ""
+                vec = embed_text(f"{title} {summary}")
+                vals_str = ",".join(str(round(x, 6)) for x in vec)
+                graph.query(f"MATCH (i:Incident {{id: '{iid}'}}) SET i.signature_embedding = vecf32([{vals_str}])")
+                inc_count += 1
+
+        # 2. Re-embed Decisions
+        dec_res = graph.query("MATCH (d:Decision) RETURN d.id, d.summary")
+        dec_count = 0
+        if dec_res and dec_res.result_set:
+            for row in dec_res.result_set:
+                did, summary = row[0], row[1] or ""
+                vec = embed_text(summary)
+                vals_str = ",".join(str(round(x, 6)) for x in vec)
+                graph.query(f"MATCH (d:Decision {{id: '{did}'}}) SET d.embedding = vecf32([{vals_str}])")
+                dec_count += 1
+
+        return {
+            "status": "success",
+            "tenant_id": clean_id,
+            "reembedded_incidents": inc_count,
+            "reembedded_decisions": dec_count,
+            "message": f"Successfully re-embedded {inc_count} incidents and {dec_count} decisions.",
+        }
+    except Exception as e:
+        logger.error(f"Re-embed failed for tenant '{tenant_id}': {e}")
+        raise HTTPException(status_code=500, detail=f"Re-embed failed: {str(e)}")
+
+
+@app.post("/webhooks/alert")
+@app.post("/api/webhooks/alert")
+async def alert_webhook(
+    request: Request,
+    graph: TenantGraph = Depends(get_current_tenant),
+):
+    """Alert Intake Webhook:
+    Accepts generic JSON alerts and Prometheus Alertmanager payloads,
+    creates an incident on the graph blackboard, and starts the 4-agent crew.
+    """
+    try:
+        payload = await request.json()
+        service = "unknown"
+        alert_text = "System alert received"
+        severity = "P2"
+        scenario_id = None
+
+        # Check Prometheus Alertmanager format
+        if "alerts" in payload and isinstance(payload["alerts"], list) and len(payload["alerts"]) > 0:
+            first_alert = payload["alerts"][0]
+            labels = first_alert.get("labels", {})
+            annotations = first_alert.get("annotations", {})
+            service = labels.get("service") or labels.get("job") or labels.get("alertname", "unknown")
+            alert_text = annotations.get("description") or annotations.get("summary") or first_alert.get("fingerprint", "")
+            severity = labels.get("severity", "P2").upper()
+            if severity not in ("P1", "P2", "P3"):
+                severity = "P1" if "critical" in severity.lower() else "P2"
+        elif "service" in payload:
+            service = payload["service"]
+            alert_text = payload.get("text") or payload.get("description") or f"Degraded service alert on {service}"
+            severity = payload.get("severity", "P2")
+            scenario_id = payload.get("scenario_id")
+
+        orchestrator = IncidentOrchestrator(mode="live" if settings.openai_api_key else "replay")
+        crew_res, trace = orchestrator.run_crew(
+            graph=graph,
+            alert={"service": service, "text": alert_text, "severity": severity},
+            scenario_id=scenario_id,
+            auto_approve=False,
+        )
+        return {
+            "status": "created",
+            "incident_id": crew_res.get("incident_id"),
+            "service": service,
+            "crew_result": crew_res,
+        }
+    except Exception as e:
+        logger.error(f"Webhook alert processing failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Webhook alert processing failed: {str(e)}")
 
 
 @app.get("/tenants/{tenant_id}/stats")

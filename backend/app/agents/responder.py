@@ -21,6 +21,7 @@ from app.agents.conflicts import (
 )
 from app.agents.actions import propose_action
 from app.agents.llm import LLMWrapper
+from app.agents.tool_loop import ToolLoop
 
 logger = logging.getLogger("ripple.agents.responder")
 
@@ -53,7 +54,9 @@ class ResponderAgent:
     def __init__(self, mode: str = "replay"):
         self.agent_name = "Responder"
         self.role = "responder"
+        self.mode = mode
         self.llm = LLMWrapper(mode=mode)
+        self.tool_loop = ToolLoop(mode=mode)
 
     def run(
         self,
@@ -235,14 +238,21 @@ class ResponderAgent:
                 "action_class": data["action_class"],
             }
 
-        llm_out = self.llm.call_structured(
-            prompt=f"Propose response action for incident {incident_id} on {target_service} using {chosen_rb_id}",
+        loop_out = self.tool_loop.run(
+            agent_role="responder",
             system_prompt="You are Ripple's Responder Agent. Propose safe remediation plan citing runbook and action IDs.",
+            user_prompt=f"Propose response action for incident {incident_id} on {target_service} using {chosen_rb_id}",
+            graph=graph,
+            allow_list=["rank_runbooks", "check_applicability", "who_knows"],
             schema=ResponderOutputSchema,
             valid_node_ids=valid_cites,
             context_data=context,
             fallback_generator=fallback_gen,
+            as_of=ref_ts,
+            pre_executed_tools={"who_knows": people_result},
         )
+        llm_out = loop_out["final"]
+        trace.merge(loop_out["trace"])
 
         # 8. Record Observation on blackboard
         obs = record_agent_observation(

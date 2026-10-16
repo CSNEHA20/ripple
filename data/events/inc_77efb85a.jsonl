@@ -1,0 +1,2 @@
+{"incident_id": "inc_77efb85a", "event": "incident_opened", "data": {"incident_id": "inc_77efb85a", "service": "cartservice", "alert": {"service": "cartservice", "text": "cartservice high latency on session lookup", "severity": "HIGH"}}, "ts": 1792163681.4355876}
+{"incident_id": "inc_77efb85a", "event": "agent_started", "data": {"agent": "Triage", "role": "triage"}, "ts": 1792163681.4405794}

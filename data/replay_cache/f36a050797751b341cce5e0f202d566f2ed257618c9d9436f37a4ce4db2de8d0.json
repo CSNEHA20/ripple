@@ -1,0 +1,12 @@
+{
+  "top_cause": "Internal defect or regression in alerting service 'cartservice' (alerting_service).",
+  "top_service": "cartservice",
+  "evidence_score": 1.57,
+  "margin": 1.57,
+  "summary": "Investigator ranked root cause as 'cartservice' with evidence score 1.57 and margin 1.57 [ev_hyp_inc_888f8232_cartservice_dependency_path_support_1].",
+  "cited_evidence_ids": [
+    "ev_hyp_inc_888f8232_cartservice_dependency_path_support_1",
+    "ev_hyp_inc_888f8232_cartservice_decision_support_3",
+    "ev_hyp_inc_888f8232_cartservice_decision_support_4"
+  ]
+}

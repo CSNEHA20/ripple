@@ -401,3 +401,28 @@ def test_api_incident_endpoints(seeded_tenant):
     app_data = app_resp.json()["data"]
     assert app_data["status"] == "resolved"
     assert app_data["verifier"]["observed_outcome"] == "resolved"
+
+
+def test_tool_loop_and_providers(seeded_tenant):
+    """Test ToolLoop execution, tool execution inside loop, and fallback behavior."""
+    from pydantic import BaseModel
+    from app.agents.tool_loop import ToolLoop
+    from app.agents.llm import OpenAIProvider, get_llm_provider
+
+    class DummySchema(BaseModel):
+        status: str
+        tool_count: int
+
+    tool_loop = ToolLoop(mode="replay")
+    result = tool_loop.run(
+        agent_role="triage",
+        system_prompt="Test system prompt",
+        user_prompt="Test user prompt",
+        graph=seeded_tenant,
+        allow_list=["blast_radius", "criticality_ranking"],
+        schema=DummySchema,
+        fallback_generator=lambda ctx, **kw: {"status": "ok", "tool_count": 2},
+    )
+    assert result["final"].status == "ok"
+    assert result["final"].tool_count == 2
+    assert hasattr(result["trace"], "steps")

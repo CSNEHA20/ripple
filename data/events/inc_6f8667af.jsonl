@@ -1,0 +1,2 @@
+{"incident_id": "inc_6f8667af", "event": "incident_opened", "data": {"incident_id": "inc_6f8667af", "service": "paymentservice", "alert": {"service": "paymentservice", "text": "paymentservice authorization latency > 2200ms", "severity": "CRITICAL"}}, "ts": 1792163681.0943081}
+{"incident_id": "inc_6f8667af", "event": "agent_started", "data": {"agent": "Triage", "role": "triage"}, "ts": 1792163681.110083}

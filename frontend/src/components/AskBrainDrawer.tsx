@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Sparkles, Link2, X, Bot, User, Clock } from 'lucide-react';
-import type { AskBrainResponse } from '../api';
+import { Send, Sparkles, Link2, X, Bot, User, Clock, AlertTriangle, FileText } from 'lucide-react';
+import { getBrainFreshness, getAskHistory, type AskBrainResponse } from '../api';
 
 interface AskBrainDrawerProps {
   isOpen: boolean;
@@ -13,7 +13,25 @@ export const AskBrainDrawer: React.FC<AskBrainDrawerProps> = ({ isOpen, onClose,
   const [question, setQuestion] = useState('');
   const [pending, setPending] = useState<string | null>(null);
   const [history, setHistory] = useState<AskBrainResponse[]>([]);
+  const [staleDocs, setStaleDocs] = useState<any[]>([]);
+  const [pastQuestions, setPastQuestions] = useState<any[]>([]);
   const endRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (isOpen) {
+      getBrainFreshness()
+        .then((f) => {
+          if (f?.stale_docs) setStaleDocs(f.stale_docs);
+          else if (f?.freshness_analysis?.stale_docs) setStaleDocs(f.freshness_analysis.stale_docs);
+        })
+        .catch(() => {});
+      getAskHistory()
+        .then((h) => {
+          if (Array.isArray(h)) setPastQuestions(h);
+        })
+        .catch(() => {});
+    }
+  }, [isOpen]);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -84,7 +102,28 @@ export const AskBrainDrawer: React.FC<AskBrainDrawerProps> = ({ isOpen, onClose,
                   Ask about architecture, ownership, decisions, or incidents. Every claim links back to the graph.
                 </p>
               </div>
+              {staleDocs.length > 0 && (
+                <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/25 space-y-2">
+                  <div className="flex items-center gap-2 text-amber-500 text-[12.5px] font-bold">
+                    <AlertTriangle size={14} /> Stale Documentation Detected
+                  </div>
+                  <div className="space-y-1.5">
+                    {staleDocs.slice(0, 3).map((d: any, idx: number) => (
+                      <div key={idx} className="flex items-center justify-between text-[11.5px] text-[var(--text-secondary)]">
+                        <span className="font-medium truncate max-w-[60%] flex items-center gap-1.5">
+                          <FileText size={11} className="text-amber-500/70" /> {d.title || d.doc_id || d.id}
+                        </span>
+                        <span className="chip chip-amber !text-[10px] !py-0.5">
+                          not verified since {d.unverified_changes_count ?? d.changes_since ?? 3} changes
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               <div className="space-y-2">
+                <div className="eyebrow">Suggested questions</div>
                 {sampleQuestions.map((sq, i) => (
                   <button
                     key={i}
@@ -96,6 +135,26 @@ export const AskBrainDrawer: React.FC<AskBrainDrawerProps> = ({ isOpen, onClose,
                   </button>
                 ))}
               </div>
+
+              {pastQuestions.length > 0 && (
+                <div className="space-y-2">
+                  <div className="eyebrow flex items-center gap-1.5"><Clock size={11} /> Past questions</div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {pastQuestions.slice(0, 5).map((pq: any, i: number) => {
+                      const qText = typeof pq === 'string' ? pq : (pq.question || pq.text);
+                      return (
+                        <button
+                          key={i}
+                          onClick={() => handleSend(qText)}
+                          className="chip chip-interactive !text-[11.5px] max-w-full truncate"
+                        >
+                          {qText}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
           ) : (
             <>

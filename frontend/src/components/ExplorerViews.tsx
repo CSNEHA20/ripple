@@ -14,7 +14,7 @@ import {
   Sparkles,
   type LucideIcon,
 } from 'lucide-react';
-import type { GraphNode, GraphEdge, ScenarioItem, MemoryRecallData } from '../api';
+import { getToolsList, type GraphNode, type GraphEdge, type ScenarioItem, type MemoryRecallData } from '../api';
 import type { ViewId } from './Sidebar';
 
 const ViewHero: React.FC<{ icon: LucideIcon; eyebrow: string; title: string; accent: string; sub: string; right?: React.ReactNode }> = ({
@@ -213,36 +213,74 @@ export const SettingsView: React.FC<{
   onChangeMode: (m: 'replay' | 'live') => void;
   tenant: string;
   onChangeTenant: (t: string) => void;
-}> = ({ theme, onToggleTheme, mode, onChangeMode, tenant, onChangeTenant }) => (
-  <div className="space-y-5">
-    <ViewHero icon={Settings} eyebrow="Preferences" title="Workspace" accent="Settings" sub="Appearance, execution mode and tenant." />
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-      <div className="surface p-5 space-y-4">
-        <div className="eyebrow">Appearance</div>
-        <div className="seg w-full">
-          <button className="seg-item flex-1 justify-center" data-active={theme === 'light'} onClick={() => theme !== 'light' && onToggleTheme()}><Sun size={13} /> Light</button>
-          <button className="seg-item flex-1 justify-center" data-active={theme === 'dark'} onClick={() => theme !== 'dark' && onToggleTheme()}><Moon size={13} /> Dark</button>
+}> = ({ theme, onToggleTheme, mode, onChangeMode, tenant, onChangeTenant }) => {
+  const [tools, setTools] = useState<any[]>([]);
+
+  React.useEffect(() => {
+    getToolsList(tenant).then(setTools).catch(() => {});
+  }, [tenant]);
+
+  return (
+    <div className="space-y-5">
+      <ViewHero icon={Settings} eyebrow="Preferences" title="Workspace" accent="Settings" sub="Appearance, execution mode, tenant, and MCP tools." />
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+        <div className="surface p-5 space-y-4">
+          <div className="eyebrow">Appearance</div>
+          <div className="seg w-full">
+            <button className="seg-item flex-1 justify-center" data-active={theme === 'light'} onClick={() => theme !== 'light' && onToggleTheme()}><Sun size={13} /> Light</button>
+            <button className="seg-item flex-1 justify-center" data-active={theme === 'dark'} onClick={() => theme !== 'dark' && onToggleTheme()}><Moon size={13} /> Dark</button>
+          </div>
+        </div>
+        <div className="surface p-5 space-y-4">
+          <div className="eyebrow">Execution mode</div>
+          <div className="seg w-full">
+            <button className="seg-item flex-1 justify-center" data-active={mode === 'replay'} onClick={() => onChangeMode('replay')}>Replay cache</button>
+            <button className="seg-item flex-1 justify-center" data-active={mode === 'live'} onClick={() => onChangeMode('live')}>Live LLM</button>
+          </div>
+          <p className="text-[12px] text-[var(--text-muted)] leading-relaxed">Replay serves deterministic cached runs. Live calls the model.</p>
+        </div>
+        <div className="surface p-5 space-y-4">
+          <div className="eyebrow">Tenant</div>
+          <select className="field font-mono cursor-pointer" value={tenant} onChange={(e) => onChangeTenant(e.target.value)}>
+            <option value="storefront">tenant_storefront (Prod)</option>
+            <option value="payments">tenant_payments (Finance)</option>
+            <option value="smoke">tenant_smoke (Test)</option>
+          </select>
         </div>
       </div>
-      <div className="surface p-5 space-y-4">
-        <div className="eyebrow">Execution mode</div>
-        <div className="seg w-full">
-          <button className="seg-item flex-1 justify-center" data-active={mode === 'replay'} onClick={() => onChangeMode('replay')}>Replay cache</button>
-          <button className="seg-item flex-1 justify-center" data-active={mode === 'live'} onClick={() => onChangeMode('live')}>Live LLM</button>
+
+      <div className="surface p-6 space-y-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <div className="eyebrow">Model Context Protocol (MCP) Tools</div>
+            <h3 className="text-base font-bold text-[var(--text-primary)] mt-1">Available Agent Tools ({tools.length || 11})</h3>
+          </div>
+          <span className="chip chip-mono chip-cyan">MCP 2.0 / stdio</span>
         </div>
-        <p className="text-[12px] text-[var(--text-muted)] leading-relaxed">Replay serves deterministic cached runs. Live calls the model.</p>
-      </div>
-      <div className="surface p-5 space-y-4">
-        <div className="eyebrow">Tenant</div>
-        <select className="field font-mono cursor-pointer" value={tenant} onChange={(e) => onChangeTenant(e.target.value)}>
-          <option value="storefront">tenant_storefront (Prod)</option>
-          <option value="payments">tenant_payments (Finance)</option>
-          <option value="smoke">tenant_smoke (Test)</option>
-        </select>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
+          {(tools.length > 0 ? tools : [
+            { name: 'blast_radius', description: 'Downstream traversal for failure impact.' },
+            { name: 'upstream_suspects', description: 'Upstream dependencies causing alert.' },
+            { name: 'recent_changes', description: 'Recent deployments and PR changes.' },
+            { name: 'service_health', description: 'Real-time telemetry and metric status.' },
+            { name: 'who_knows', description: 'Owner and expert recency-weighted scoring.' },
+            { name: 'similar_incidents', description: 'Semantic vector similarity and graph re-rank.' },
+            { name: 'criticality_ranking', description: 'PageRank topological centrality.' },
+            { name: 'path_between', description: 'Shortest causal dependency path.' },
+            { name: 'rank_runbooks', description: 'Laplace-smoothed outcome success rate.' },
+            { name: 'check_applicability', description: 'Graph topology verification of assumptions.' },
+            { name: 'counterfactual_blast', description: 'What-if failure comparative diff.' }
+          ]).map((t: any) => (
+            <div key={t.name} className="inset-well p-4 space-y-1.5">
+              <span className="chip chip-mono !text-[11px] font-bold text-[#ff4d2d]">{t.name}</span>
+              <p className="text-[12px] text-[var(--text-secondary)] leading-relaxed">{t.description}</p>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
-  </div>
-);
+  );
+};
 
 /* --------------------- Modules not yet wired to data -------------------- */
 const MODULES: Partial<Record<ViewId, { icon: LucideIcon; eyebrow: string; title: string; accent: string; sub: string; body: string }>> = {

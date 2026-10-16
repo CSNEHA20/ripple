@@ -1,0 +1,7 @@
+{
+  "incident_id": "inc_11dbbbda",
+  "observed_outcome": "resolved",
+  "metrics_summary": "Post-intervention check on paymentservice: Intervention 'Rollback Recent Deployment' succeeded. Target service stabilized, p95 latency and error rate returned to healthy baseline across all dependent callers.",
+  "summary": "Verifier confirmed resolved outcome for rb_rollback [hyp_inc_11dbbbda_paymentservice].",
+  "resolution_confirmed": true
+}

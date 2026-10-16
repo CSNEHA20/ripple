@@ -412,3 +412,39 @@ export async function checkHealth(): Promise<any> {
   if (!res.ok) throw new Error('Health check failed');
   return res.json();
 }
+
+export async function getAskHistory(tenant: string = 'storefront'): Promise<any[]> {
+  const res = await fetch('/ask/history', { headers: { 'X-Tenant': tenant } });
+  if (!res.ok) return [];
+  const json = await res.json();
+  return json.history || [];
+}
+
+export async function getBrainFreshness(tenant: string = 'storefront'): Promise<any> {
+  const res = await fetch('/brain/freshness', { headers: { 'X-Tenant': tenant } });
+  if (!res.ok) return null;
+  const json = await res.json();
+  return json.data || json;
+}
+
+export async function getCounterfactualUncertainty(services?: string[], tenant: string = 'storefront'): Promise<any> {
+  const q = services && services.length > 0 ? `?services=${services.join(',')}` : '';
+  const res = await fetch(`/counterfactual/uncertainty${q}`, { headers: { 'X-Tenant': tenant } });
+  if (!res.ok) return null;
+  const json = await res.json();
+  return json.data || json;
+}
+
+export async function getMemoryFacts(tenant: string = 'storefront'): Promise<any> {
+  const res = await fetch('/memory/facts', { headers: { 'X-Tenant': tenant } });
+  if (!res.ok) return { facts: [] };
+  const json = await res.json();
+  return json.data || json;
+}
+
+export async function getToolsList(tenant: string = 'storefront'): Promise<any[]> {
+  const res = await fetch('/tools', { headers: { 'X-Tenant': tenant } });
+  if (!res.ok) return [];
+  const json = await res.json();
+  return json.tools || [];
+}

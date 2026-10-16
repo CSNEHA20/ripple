@@ -93,6 +93,31 @@ class Trace:
             if eid and eid not in self.edges:
                 self.edges.append(eid)
 
+    def record(
+        self,
+        cypher: str,
+        tool: str = "graph_query",
+        duration_ms: float = 0.0,
+        params: dict[str, Any] | None = None,
+        node_ids: list[str] | None = None,
+        edge_ids: list[str] | None = None,
+        summary: str = "",
+        rows_count: int = 0,
+        read_only: bool = True,
+    ) -> TraceStep:
+        step = TraceStep(
+            tool=tool,
+            cypher=cypher,
+            params=params or {},
+            node_ids=node_ids or [],
+            edge_ids=edge_ids or [],
+            summary=summary or f"Executed {tool}",
+            rows_count=rows_count,
+            duration_ms=duration_ms,
+        )
+        self.add_step(step)
+        return step
+
     def merge(self, other: "Trace | TraceStep | None") -> None:
         if other is None:
             return

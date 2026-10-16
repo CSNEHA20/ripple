@@ -15,6 +15,7 @@ from app.agents.blackboard import (
     record_agent_observation,
 )
 from app.agents.llm import LLMWrapper
+from app.agents.tool_loop import ToolLoop
 
 logger = logging.getLogger("ripple.agents.triage")
 
@@ -41,7 +42,9 @@ class TriageAgent:
     def __init__(self, mode: str = "replay"):
         self.agent_name = "Triage"
         self.role = "triage"
+        self.mode = mode
         self.llm = LLMWrapper(mode=mode)
+        self.tool_loop = ToolLoop(mode=mode)
 
     def run(
         self,
@@ -130,14 +133,21 @@ class TriageAgent:
             for inc in recall_res.get("similar_incidents", [])
             if (inc.get("incident_id") or inc.get("id"))
         ]
-        llm_out = self.llm.call_structured(
-            prompt=f"Triage incident {incident_id} for alert on {service_name}: {alert_text}",
-            system_prompt="You are Ripple's Triage Agent. Analyze alert and blast radius.",
+        loop_out = self.tool_loop.run(
+            agent_role="triage",
+            system_prompt="You are Ripple's Triage Agent. Analyze alert, call graph tools (blast_radius, criticality_ranking, similar_incidents), and output structured assessment.",
+            user_prompt=f"Triage incident {incident_id} for alert on {service_name}: {alert_text}",
+            graph=graph,
+            allow_list=["blast_radius", "criticality_ranking", "similar_incidents"],
             schema=TriageOutputSchema,
             valid_node_ids=valid_cites,
             context_data=context,
             fallback_generator=fallback_gen,
+            as_of=ref_ts,
+            pre_executed_tools={"blast_radius": blast_result, "criticality_ranking": crit_result},
         )
+        llm_out = loop_out["final"]
+        trace.merge(loop_out["trace"])
 
         # 7. Record Observation on blackboard
         obs = record_agent_observation(

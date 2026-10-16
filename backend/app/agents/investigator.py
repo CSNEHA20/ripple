@@ -20,6 +20,7 @@ from app.agents.conflicts import (
     check_margin_conflict,
 )
 from app.agents.llm import LLMWrapper
+from app.agents.tool_loop import ToolLoop
 
 logger = logging.getLogger("ripple.agents.investigator")
 
@@ -51,7 +52,9 @@ class InvestigatorAgent:
     def __init__(self, mode: str = "replay"):
         self.agent_name = "Investigator"
         self.role = "investigator"
+        self.mode = mode
         self.llm = LLMWrapper(mode=mode)
+        self.tool_loop = ToolLoop(mode=mode)
 
     def run(
         self,
@@ -172,14 +175,20 @@ class InvestigatorAgent:
                 "cited_evidence_ids": ev_list[:3],
             }
 
-        llm_out = self.llm.call_structured(
-            prompt=f"Summarize root cause for incident {incident_id} with top candidate {top_hyp.get('service') if top_hyp else 'none'}",
+        loop_out = self.tool_loop.run(
+            agent_role="investigator",
             system_prompt="You are Ripple's Investigator Agent. Output root cause summary citing evidence IDs.",
+            user_prompt=f"Summarize root cause for incident {incident_id} with top candidate {top_hyp.get('service') if top_hyp else 'none'}",
+            graph=graph,
+            allow_list=["upstream_suspects", "recent_changes", "service_health", "path_between"],
             schema=InvestigatorOutputSchema,
             valid_node_ids=valid_ev_ids,
             context_data=context,
             fallback_generator=fallback_gen,
+            as_of=ref_ts,
         )
+        llm_out = loop_out["final"]
+        trace.merge(loop_out["trace"])
 
         # 5. Record Observation on blackboard
         obs = record_agent_observation(

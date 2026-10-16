@@ -1,0 +1,11 @@
+{
+  "top_cause": "Internal defect or regression in alerting service 'paymentservice' (alerting_service).",
+  "top_service": "paymentservice",
+  "evidence_score": 1.5,
+  "margin": 1.5,
+  "summary": "Investigator ranked root cause as 'paymentservice' with evidence score 1.50 and margin 1.50 [ev_hyp_inc_0ac6b9f2_paymentservice_dependency_path_support_1].",
+  "cited_evidence_ids": [
+    "ev_hyp_inc_0ac6b9f2_paymentservice_dependency_path_support_1",
+    "hyp_inc_0ac6b9f2_paymentservice"
+  ]
+}

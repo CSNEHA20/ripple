@@ -1,0 +1,2 @@
+{"incident_id": "inc_972b6e61", "event": "incident_opened", "data": {"incident_id": "inc_972b6e61", "service": "paymentservice", "alert": {"service": "paymentservice", "text": "High HTTP 500 error rate on checkout payment authorize"}}, "ts": 1792163680.0631385}
+{"incident_id": "inc_972b6e61", "event": "agent_started", "data": {"agent": "Triage", "role": "triage"}, "ts": 1792163680.0689945}

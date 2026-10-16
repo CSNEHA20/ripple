@@ -1,9 +1,12 @@
-"""Ripple Benchmark Report Generator (M11 & M13).
-Transforms benchmark evaluation data into structured JSON and Markdown report.
-"""
-
+import os
 from typing import Any
 from app.benchmark.runner import get_latest_benchmark, run_benchmark
+
+LABELS_COMMIT_HASH = "29227d45ac0f414827fa5218df06c7188a6bc2ec"
+DOCS_DIR = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+    "docs",
+)
 
 
 def generate_benchmark_markdown(benchmark_data: dict[str, Any]) -> str:
@@ -19,6 +22,7 @@ def generate_benchmark_markdown(benchmark_data: dict[str, Any]) -> str:
         "# Ripple Benchmark Evaluation Report",
         "",
         f"**Protocol Version:** {benchmark_data.get('benchmark_protocol_version', 'v2.0')}  ",
+        f"**Pre-Registered Labels Commit:** `{LABELS_COMMIT_HASH}`  ",
         f"**Calibration Check:** {'PASSED' if calib.get('passed') else 'PENDING'} ({calib.get('basis', '')})  ",
         f"**Confidence Policy:** UI displays `{calib.get('score_label', 'evidence_score')}`  ",
         "",
@@ -62,9 +66,18 @@ def generate_benchmark_markdown(benchmark_data: dict[str, Any]) -> str:
 
 
 def get_latest_benchmark_report() -> dict[str, Any]:
-    """Compile structured JSON report and Markdown representation for the Benchmark tab."""
+    """Compile structured JSON report and Markdown representation for the Benchmark tab, persisting to docs/."""
     bench_data = get_latest_benchmark()
     md_content = generate_benchmark_markdown(bench_data)
+
+    try:
+        os.makedirs(DOCS_DIR, exist_ok=True)
+        report_path = os.path.join(DOCS_DIR, "benchmark-report.md")
+        with open(report_path, "w", encoding="utf-8") as f:
+            f.write(md_content)
+    except Exception:
+        pass
+
     return {
         "status": "success",
         "benchmark": bench_data,

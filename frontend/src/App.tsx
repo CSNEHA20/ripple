@@ -40,6 +40,7 @@ import { AskBrainDrawer } from './components/AskBrainDrawer';
 import { InspectorDrawer } from './components/InspectorDrawer';
 import { ApprovalGate } from './components/ApprovalGate';
 import { ScenarioDrawer } from './components/ScenarioDrawer';
+import { RippleFooter } from './components/RippleFooter';
 
 export default function App() {
   // Theme state: defaults to dark matching Image 2, toggleable to light matching Image 1
@@ -635,6 +636,14 @@ export default function App() {
             <ModuleView view={activeTab} onAskBrain={() => setIsAskDrawerOpen(true)} />
           )}
         </div>
+
+        {/* Premium Animated Dark SaaS Footer with Giant Wordmark */}
+        <RippleFooter
+          activeTab={activeTab}
+          onChangeTab={setActiveTab}
+          onOpenAskBrain={() => setIsAskDrawerOpen(true)}
+          healthOk={healthOk}
+        />
       </div>
 
       {/* Scenario Library Modal / Drawer */}

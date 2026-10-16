@@ -24,9 +24,56 @@ from app.scenarios.catalog import get_scenario, list_scenarios
 from app.scenarios.engine import load_scenario, seed_historical_incidents
 from app.agents.orchestrator import IncidentOrchestrator
 
+import os
+
 logger = logging.getLogger("ripple.benchmark")
 
+BENCHMARK_RUNS_DIR = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+    "data",
+    "benchmark_runs",
+)
+
 _LATEST_BENCHMARK_RESULTS: dict[str, Any] | None = None
+
+
+def _save_benchmark_run(payload: dict[str, Any]) -> str:
+    """Save benchmark run payload to data/benchmark_runs/<ts>.json and latest.json."""
+    try:
+        os.makedirs(BENCHMARK_RUNS_DIR, exist_ok=True)
+        ts = int(payload.get("timestamp", time.time()))
+        filepath = os.path.join(BENCHMARK_RUNS_DIR, f"{ts}.json")
+        latest_path = os.path.join(BENCHMARK_RUNS_DIR, "latest.json")
+        with open(filepath, "w", encoding="utf-8") as f:
+            json.dump(payload, f, indent=2)
+        with open(latest_path, "w", encoding="utf-8") as f:
+            json.dump(payload, f, indent=2)
+        return filepath
+    except Exception as e:
+        logger.warning(f"Failed to persist benchmark run to disk: {e}")
+        return ""
+
+
+def _load_latest_persisted_benchmark() -> dict[str, Any] | None:
+    """Load latest persisted benchmark run from disk."""
+    if not os.path.exists(BENCHMARK_RUNS_DIR):
+        return None
+    latest_path = os.path.join(BENCHMARK_RUNS_DIR, "latest.json")
+    if os.path.exists(latest_path):
+        try:
+            with open(latest_path, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception as e:
+            logger.warning(f"Error reading {latest_path}: {e}")
+    files = [f for f in os.listdir(BENCHMARK_RUNS_DIR) if f.endswith(".json") and f != "latest.json"]
+    if files:
+        files.sort(reverse=True)
+        try:
+            with open(os.path.join(BENCHMARK_RUNS_DIR, files[0]), "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return None
 
 
 def _load_ground_truth_labels() -> dict[str, Any]:
@@ -85,15 +132,15 @@ def run_single_scenario_benchmark(
     elapsed = round(time.time() - start_time, 3)
 
     # 5. Extract results
-    investigation = crew_result.get("investigation", {})
+    investigation = crew_result.get("investigator") or crew_result.get("investigation") or {}
     hypotheses = investigation.get("hypotheses", [])
-    top_hyp = hypotheses[0] if hypotheses else {}
+    top_hyp = investigation.get("top_hypothesis") or (hypotheses[0] if hypotheses else {})
     top_svc = top_hyp.get("service", "")
     evidence_score = float(top_hyp.get("evidence_score", 0.0))
 
-    response_phase = crew_result.get("response", {})
-    rec_runbook = response_phase.get("recommended_runbook", {})
-    rec_runbook_id = rec_runbook.get("id") if isinstance(rec_runbook, dict) else str(rec_runbook)
+    response_phase = crew_result.get("responder") or crew_result.get("response") or {}
+    rec_runbook = response_phase.get("selected_runbook_id") or response_phase.get("recommended_runbook", {})
+    rec_runbook_id = rec_runbook.get("id") if isinstance(rec_runbook, dict) else str(rec_runbook or "")
 
     gt_svc = label_info.get("root_cause_service")
     gt_runbook = label_info.get("correct_runbook")
@@ -223,6 +270,7 @@ def run_benchmark(
         "runs": runs,
     }
 
+    _save_benchmark_run(benchmark_payload)
     _LATEST_BENCHMARK_RESULTS = benchmark_payload
     return benchmark_payload
 
@@ -232,6 +280,11 @@ def get_latest_benchmark() -> dict[str, Any]:
     global _LATEST_BENCHMARK_RESULTS
     if _LATEST_BENCHMARK_RESULTS is not None:
         return _LATEST_BENCHMARK_RESULTS
+
+    persisted = _load_latest_persisted_benchmark()
+    if persisted:
+        _LATEST_BENCHMARK_RESULTS = persisted
+        return persisted
 
     # Run quick representative benchmark across families
     return run_benchmark(

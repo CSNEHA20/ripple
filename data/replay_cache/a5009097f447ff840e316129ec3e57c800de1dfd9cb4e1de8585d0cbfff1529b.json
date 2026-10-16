@@ -1,0 +1,8 @@
+{
+  "alerting_service": "paymentservice (Citations: [inc_paymentservice], [inc_0ac6b9f2])",
+  "severity": "P3",
+  "blast_radius_count": 0,
+  "impacted_services": [],
+  "summary": "Triage assessed alert on 'paymentservice'. Blast radius: 0 downstream service(s) [none directly downstream]. Assigned severity P3 (recalled inc_0ac6b9f2).",
+  "suggested_focus": "Investigate upstream dependencies and recent changes affecting 'paymentservice'."
+}

@@ -17,14 +17,53 @@ from app.agents.actions import approve_action, get_pending_actions
 logger = logging.getLogger("ripple.agents.orchestrator")
 
 
+import os
+from app.config import settings
+
+EVENTS_PERSIST_DIR = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+    "data",
+    "events",
+)
+
+
 class IncidentEventBus:
-    """In-memory pub/sub event bus for live Server-Sent Events (SSE) streaming."""
+    """Pub/sub event bus with in-memory fan-out and disk persistence for live SSE streaming."""
 
     def __init__(self):
         # incident_id -> list of asyncio.Queue
         self._subscribers: dict[str, list[asyncio.Queue]] = defaultdict(list)
         # Store event history per incident for catch-up on late subscriber connect
         self._history: dict[str, list[dict[str, Any]]] = defaultdict(list)
+        try:
+            os.makedirs(EVENTS_PERSIST_DIR, exist_ok=True)
+        except Exception:
+            pass
+
+    def _persist_event(self, incident_id: str, event: dict[str, Any]) -> None:
+        """Append event to persistent JSONL log on disk."""
+        try:
+            os.makedirs(EVENTS_PERSIST_DIR, exist_ok=True)
+            log_path = os.path.join(EVENTS_PERSIST_DIR, f"{incident_id}.jsonl")
+            with open(log_path, "a", encoding="utf-8") as f:
+                f.write(json.dumps(event) + "\n")
+        except Exception as e:
+            logger.warning(f"Failed to persist SSE event to disk: {e}")
+
+    def _load_persisted_events(self, incident_id: str) -> list[dict[str, Any]]:
+        """Load persisted event history from disk if memory is empty."""
+        events = []
+        log_path = os.path.join(EVENTS_PERSIST_DIR, f"{incident_id}.jsonl")
+        if os.path.exists(log_path):
+            try:
+                with open(log_path, "r", encoding="utf-8") as f:
+                    for line in f:
+                        line = line.strip()
+                        if line:
+                            events.append(json.loads(line))
+            except Exception as e:
+                logger.warning(f"Failed to load persisted SSE events from {log_path}: {e}")
+        return events
 
     def publish(self, incident_id: str, event_type: str, data: dict[str, Any]) -> None:
         event = {
@@ -34,6 +73,7 @@ class IncidentEventBus:
             "ts": time.time(),
         }
         self._history[incident_id].append(event)
+        self._persist_event(incident_id, event)
         queues = self._subscribers[incident_id]
         for q in list(queues):
             try:
@@ -43,8 +83,14 @@ class IncidentEventBus:
 
     async def subscribe(self, incident_id: str) -> AsyncGenerator[dict[str, Any], None]:
         q: asyncio.Queue = asyncio.Queue()
-        # Replay past events
-        for past_ev in self._history[incident_id]:
+
+        # Replay past events from memory or disk
+        history = self._history[incident_id]
+        if not history:
+            history = self._load_persisted_events(incident_id)
+            self._history[incident_id] = history
+
+        for past_ev in history:
             await q.put(past_ev)
 
         self._subscribers[incident_id].append(q)

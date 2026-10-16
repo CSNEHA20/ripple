@@ -2,7 +2,7 @@ import time
 from typing import Any
 from app.tenancy import TenantGraph
 from app.trace import Trace, TraceStep, ToolResult
-from app.ingest.embed import embed_text, cosine_similarity
+from app.ingest.embed import embed_text, cosine_similarity, query_vector_index
 from app.tools.blast_radius import blast_radius
 
 
@@ -121,6 +121,19 @@ def similar_incidents(
 
     query_emb = embed_text(alert_text)
 
+    # 1. Native FalkorDB Vector Index Query
+    vec_start = time.time()
+    vec_hits = query_vector_index(graph, "Incident", "signature_embedding", query_emb, k=k * 2)
+    vec_duration = (time.time() - vec_start) * 1000.0
+    vals_preview = ",".join(str(round(x, 4)) for x in query_emb[:6]) + ",..."
+    trace.record(
+        cypher=f"CALL db.idx.vector.queryNodes('Incident', 'signature_embedding', {k * 2}, vecf32([{vals_preview}])) YIELD node, score",
+        duration_ms=vec_duration,
+        params={"k": k * 2},
+        read_only=True,
+    )
+
+    # 2. Graph topology and outcome lookup with service-overlap re-ranking
     cypher = """
     MATCH (inc:Incident)
     OPTIONAL MATCH (inc)-[:TRIGGERED_BY]->(a:Alert)

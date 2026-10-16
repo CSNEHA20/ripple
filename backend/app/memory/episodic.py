@@ -3,7 +3,7 @@ import time
 from typing import Any
 from app.tenancy import TenantGraph
 from app.trace import Trace, TraceStep
-from app.ingest.embed import embed_text, cosine_similarity
+from app.ingest.embed import embed_text, cosine_similarity, query_vector_index
 
 
 def close_incident(
@@ -78,7 +78,9 @@ def close_incident(
         affected.append({"service": hyp_service, "role": "root"})
 
     for aff in affected:
-        s_name = aff["service"]
+        s_name = aff.get("service") or aff.get("name")
+        if not s_name:
+            continue
         role = aff.get("role", "impacted")
         aff_cypher = """
         MATCH (i:Incident {id: $inc_id})
@@ -98,31 +100,53 @@ def close_incident(
         graph.query(handle_cypher, {"inc_id": incident_id, "login": handled_by})
 
     # 5. Connect SIMILAR_TO edges with other past incidents in graph
-    other_cypher = """
-    MATCH (other:Incident)
-    WHERE other.id <> $inc_id AND other.signature_embedding IS NOT NULL
-    RETURN other.id AS id, other.signature_embedding AS emb
-    """
-    other_res = graph.query(other_cypher, {"inc_id": incident_id})
+    # Try native FalkorDB vector query first
+    vec_hits = query_vector_index(graph, "Incident", "signature_embedding", sig_emb, k=5)
     similar_links: list[dict[str, Any]] = []
 
-    if other_res and other_res.result_set:
-        for row in other_res.result_set:
-            other_id, other_emb = row
-            if other_emb:
-                cos_sim = cosine_similarity(sig_emb, other_emb)
-                if cos_sim >= 0.35:
-                    sim_cypher = """
-                    MATCH (a:Incident {id: $a_id}), (b:Incident {id: $b_id})
-                    MERGE (a)-[r:SIMILAR_TO]->(b)
-                    SET r.score = $score
-                    """
-                    graph.query(sim_cypher, {
-                        "a_id": incident_id,
-                        "b_id": other_id,
-                        "score": round(cos_sim, 4),
-                    })
-                    similar_links.append({"other_id": other_id, "score": round(cos_sim, 4)})
+    if vec_hits:
+        for hit in vec_hits:
+            node = hit["node"]
+            score = hit["score"]
+            other_id = getattr(node, "properties", {}).get("id") or getattr(node, "id", None)
+            if other_id and other_id != incident_id and score >= 0.35:
+                sim_cypher = """
+                MATCH (a:Incident {id: $a_id}), (b:Incident {id: $b_id})
+                MERGE (a)-[r:SIMILAR_TO]->(b)
+                SET r.score = $score
+                """
+                graph.query(sim_cypher, {
+                    "a_id": incident_id,
+                    "b_id": other_id,
+                    "score": round(score, 4),
+                })
+                similar_links.append({"other_id": other_id, "score": round(score, 4)})
+
+    if not similar_links:
+        other_cypher = """
+        MATCH (other:Incident)
+        WHERE other.id <> $inc_id AND other.signature_embedding IS NOT NULL
+        RETURN other.id AS id, other.signature_embedding AS emb
+        """
+        other_res = graph.query(other_cypher, {"inc_id": incident_id})
+
+        if other_res and other_res.result_set:
+            for row in other_res.result_set:
+                other_id, other_emb = row
+                if other_emb:
+                    cos_sim = cosine_similarity(sig_emb, other_emb)
+                    if cos_sim >= 0.35:
+                        sim_cypher = """
+                        MATCH (a:Incident {id: $a_id}), (b:Incident {id: $b_id})
+                        MERGE (a)-[r:SIMILAR_TO]->(b)
+                        SET r.score = $score
+                        """
+                        graph.query(sim_cypher, {
+                            "a_id": incident_id,
+                            "b_id": other_id,
+                            "score": round(cos_sim, 4),
+                        })
+                        similar_links.append({"other_id": other_id, "score": round(cos_sim, 4)})
 
     return {
         "incident_id": incident_id,

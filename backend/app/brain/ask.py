@@ -7,7 +7,7 @@ from typing import Any
 from pydantic import BaseModel, Field
 from app.tenancy import TenantGraph
 from app.trace import Trace, TraceStep
-from app.ingest.embed import embed_text, cosine_similarity
+from app.ingest.embed import embed_text, cosine_similarity, query_vector_index
 from app.tools.blast_radius import blast_radius
 from app.tools.people import who_knows
 from app.brain.freshness import check_docs_freshness
@@ -158,7 +158,17 @@ def handle_lineage(graph: TenantGraph, query: str) -> tuple[dict[str, Any], list
     start_time = time.time()
     trace = Trace()
 
-    # Search decisions by keywords or return all decisions
+    # Search decisions by vector similarity or keywords
+    q_emb = embed_text(query)
+    vec_hits = query_vector_index(graph, "Decision", "embedding", q_emb, k=5)
+    matched_vec_ids = set()
+    if vec_hits:
+        for hit in vec_hits:
+            d_node = hit["node"]
+            did = getattr(d_node, "properties", {}).get("id") or getattr(d_node, "id", None)
+            if did:
+                matched_vec_ids.add(did)
+
     q_words = [w for w in re.findall(r"\b[a-zA-Z0-9_\-]{3,}\b", query.lower()) if w not in ("why", "did", "the", "for", "and", "our", "what")]
     params: dict[str, Any] = {}
 
@@ -194,7 +204,7 @@ def handle_lineage(graph: TenantGraph, query: str) -> tuple[dict[str, Any], list
             d_id, summary, status, ts, svc, src_type, src_id, src_num, src_url, old_id, old_sum, new_id, new_sum = r
             # Check keyword relevance
             text_to_search = f"{d_id} {summary} {svc}".lower()
-            matches = any(word in text_to_search for word in q_words) if q_words else True
+            matches = (d_id in matched_vec_ids) or (any(word in text_to_search for word in q_words) if q_words else True)
             if matches:
                 is_sup = (status == "superseded") or (new_id is not None)
                 if is_sup:
