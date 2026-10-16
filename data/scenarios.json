@@ -638,6 +638,30 @@
         "rb_restart": "failed",
         "rb_scale_up": "partial"
       }
+    },
+    {
+      "id": "sc_sparse_01",
+      "family": "sparse",
+      "title": "Sparse: Uncorrelated Latency Anomaly Alert",
+      "description": "Alert triggered on frontend with zero metric anomalies, no recent deployments, and no architecture changes, deliberately engineered with sparse data to verify sufficiency check.",
+      "alert": {
+        "service": "frontend",
+        "text": "frontend transient alert: latency jitter without error spike",
+        "severity": "LOW"
+      },
+      "ground_truth": {
+        "root_cause_service": "unknown",
+        "root_cause_type": "insufficient_evidence",
+        "correct_runbook": "rb_scale_up",
+        "memory_should_help": false
+      },
+      "metrics": [],
+      "deployments": [],
+      "architecture_changes": [],
+      "interventions": {
+        "rb_restart": "partial",
+        "rb_scale_up": "partial"
+      }
     }
   ]
 }

@@ -1,4 +1,5 @@
-import os
+from typing import Any
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -8,12 +9,27 @@ class Settings(BaseSettings):
     backend_host: str = "0.0.0.0"
     backend_port: int = 8000
     environment: str = "development"
-    cors_origins: list[str] = [
+    cors_origins: Any = [
         "http://localhost:5173",
         "http://127.0.0.1:5173",
         "http://localhost:3000",
         "http://127.0.0.1:3000",
     ]
+
+    @field_validator("cors_origins", mode="after")
+    @classmethod
+    def parse_cors_origins(cls, v: Any) -> list[str]:
+        if isinstance(v, str):
+            import json
+            if v.startswith("["):
+                try:
+                    return json.loads(v)
+                except Exception:
+                    pass
+            return [origin.strip() for origin in v.split(",") if origin.strip()]
+        if isinstance(v, list):
+            return [str(x) for x in v]
+        return ["*"]
 
     # Pre-registered evidence weights & decay half-lives (hours) as specified in Plan v2
     evidence_weights: dict[str, float] = {
@@ -35,6 +51,11 @@ class Settings(BaseSettings):
         "decision": 2160.0,       # 90 days
         "doc": 2160.0,            # 90 days
     }
+
+    # Hypothesis sufficiency thresholds (M5)
+    min_supporting_evidence_count: int = 2
+    min_margin_threshold: float = 0.5
+    max_unresolved_contradiction: float = 2.0
 
     openai_api_key: str | None = None
     anthropic_api_key: str | None = None

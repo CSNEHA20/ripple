@@ -325,7 +325,6 @@ def api_execute_tool(
     req: ToolExecuteRequest | None = None,
     graph: TenantGraph = Depends(get_current_tenant),
 ):
-    """Execute a graph tool against the tenant graph and return data plus provenance trace."""
     args = req.arguments if req else {}
     try:
         result = execute_tool(name=tool_name, graph=graph, arguments=args)
@@ -335,5 +334,155 @@ def api_execute_tool(
     except Exception as e:
         logger.error(f"Error executing tool '{tool_name}': {e}")
         raise HTTPException(status_code=500, detail=f"Tool execution failed: {str(e)}")
+
+
+# ============================================================================
+# M5: Hypothesis & Evidence Engine Endpoints
+# ============================================================================
+
+from app.hypotheses.engine import run_investigation
+
+
+class InvestigateRequest(BaseModel):
+    alerting_service: str
+    alert_text: str = ""
+    as_of: float | None = None
+    incident_id: str | None = None
+    persist: bool = True
+
+
+@app.post("/hypotheses/investigate")
+@app.post("/api/hypotheses/investigate")
+def api_investigate_hypotheses(
+    req: InvestigateRequest,
+    graph: TenantGraph = Depends(get_current_tenant),
+):
+    """Run the M5 graph-guided hypothesis & evidence engine pipeline.
+    Generates competing hypotheses, gathers supporting and contradicting evidence,
+    ranks with exponential decay, and evaluates sufficiency.
+    """
+    try:
+        result, trace = run_investigation(
+            graph=graph,
+            alerting_service=req.alerting_service,
+            alert_text=req.alert_text,
+            as_of=req.as_of,
+            incident_id=req.incident_id,
+            persist=req.persist,
+        )
+        return {
+            "data": result,
+            "trace": trace.to_dict(),
+        }
+    except Exception as e:
+        logger.error(f"Investigation failed for service '{req.alerting_service}': {e}")
+        raise HTTPException(status_code=500, detail=f"Investigation failed: {str(e)}")
+
+
+@app.post("/scenarios/{scenario_id}/investigate")
+@app.post("/api/scenarios/{scenario_id}/investigate")
+def api_investigate_scenario(
+    scenario_id: str,
+    graph: TenantGraph = Depends(get_current_tenant),
+):
+    """Run M5 hypothesis investigation against a loaded scenario."""
+    sc = get_scenario(scenario_id)
+    if not sc:
+        raise HTTPException(status_code=404, detail=f"Scenario '{scenario_id}' not found")
+
+    alert = sc.get("alert", {})
+    alert_svc = alert.get("service")
+    if not alert_svc:
+        raise HTTPException(status_code=400, detail="Scenario missing alert.service")
+
+    alert_text = alert.get("text", "")
+    try:
+        result, trace = run_investigation(
+            graph=graph,
+            alerting_service=alert_svc,
+            alert_text=alert_text,
+            incident_id=f"inc_{scenario_id}",
+            persist=True,
+        )
+        return {
+            "scenario_id": scenario_id,
+            "ground_truth": sc.get("ground_truth"),
+            "data": result,
+            "trace": trace.to_dict(),
+        }
+    except Exception as e:
+        logger.error(f"Scenario investigation failed for '{scenario_id}': {e}")
+        raise HTTPException(status_code=500, detail=f"Scenario investigation failed: {str(e)}")
+
+
+@app.get("/incidents/{incident_id}/hypotheses")
+@app.get("/api/incidents/{incident_id}/hypotheses")
+def api_get_incident_hypotheses(
+    incident_id: str,
+    graph: TenantGraph = Depends(get_current_tenant),
+):
+    """Retrieve persisted hypotheses and linked evidence for an incident from the graph."""
+    cypher = """
+    MATCH (i:Incident {id: $incident_id})-[:HAS_HYPOTHESIS]->(h:Hypothesis)
+    OPTIONAL MATCH (h)-[:ABOUT]->(s:Service)
+    OPTIONAL MATCH (h)-[r_sup:SUPPORTED_BY]->(e_sup:Evidence)
+    OPTIONAL MATCH (h)-[r_con:CONTRADICTED_BY]->(e_con:Evidence)
+    RETURN h.id AS id,
+           h.statement AS statement,
+           h.kind AS kind,
+           h.service AS service,
+           h.status AS status,
+           h.evidence_score AS evidence_score,
+           h.margin AS margin,
+           h.formed_ts AS formed_ts,
+           collect(DISTINCT {
+               id: e_sup.id,
+               type: e_sup.type,
+               kind: e_sup.kind,
+               summary: e_sup.summary,
+               source_ref: e_sup.source_ref,
+               observed_ts: e_sup.observed_ts,
+               freshness: e_sup.freshness,
+               weight: r_sup.weight
+           }) AS supporting,
+           collect(DISTINCT {
+               id: e_con.id,
+               type: e_con.type,
+               kind: e_con.kind,
+               summary: e_con.summary,
+               source_ref: e_con.source_ref,
+               observed_ts: e_con.observed_ts,
+               freshness: e_con.freshness,
+               weight: r_con.weight
+           }) AS contradicting
+    ORDER BY h.evidence_score DESC
+    """
+    res = graph.query(cypher, {"incident_id": incident_id})
+    records = []
+    if res and res.result_set:
+        for row in res.result_set:
+            hid, stmt, kind, svc, status, score, margin, formed, supp, con = row
+            # Filter out null collect entries
+            supp_clean = [e for e in (supp or []) if e.get("id")]
+            con_clean = [e for e in (con or []) if e.get("id")]
+            records.append({
+                "id": hid,
+                "statement": stmt,
+                "kind": kind,
+                "service": svc,
+                "status": status,
+                "evidence_score": float(score or 0.0),
+                "margin": float(margin or 0.0),
+                "formed_ts": float(formed or 0.0),
+                "supporting_evidence": supp_clean,
+                "contradicting_evidence": con_clean,
+            })
+
+    return {
+        "incident_id": incident_id,
+        "count": len(records),
+        "hypotheses": records,
+    }
+
 
 
