@@ -49,188 +49,193 @@ interface ServiceLayoutNode {
   raw: GraphNode;
 }
 
-// Draw authentic vector icons for each service type directly onto canvas texture
-function drawServiceVectorIcon(ctx: CanvasRenderingContext2D, iconType: string, cx: number, cy: number, color: string) {
+// Draw crisp 2D vector icons on high-res canvas
+function drawServiceVectorIcon(
+  ctx: CanvasRenderingContext2D,
+  iconType: string,
+  cx: number,
+  cy: number,
+  color: string
+) {
   ctx.save();
   ctx.strokeStyle = color;
   ctx.fillStyle = color;
-  ctx.lineWidth = 4;
+  ctx.lineWidth = 8;
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
 
   if (iconType === 'users') {
     // Two user avatars
     ctx.beginPath();
-    ctx.arc(cx - 10, cy - 10, 10, 0, Math.PI * 2);
+    ctx.arc(cx - 20, cy - 20, 20, 0, Math.PI * 2);
     ctx.stroke();
     ctx.beginPath();
-    ctx.arc(cx - 10, cy + 22, 18, Math.PI * 1.15, Math.PI * 1.85);
+    ctx.arc(cx - 20, cy + 44, 36, Math.PI * 1.15, Math.PI * 1.85);
     ctx.stroke();
     ctx.beginPath();
-    ctx.arc(cx + 14, cy - 4, 7, 0, Math.PI * 2);
+    ctx.arc(cx + 28, cy - 8, 14, 0, Math.PI * 2);
     ctx.stroke();
     ctx.beginPath();
-    ctx.arc(cx + 14, cy + 22, 14, Math.PI * 1.15, Math.PI * 1.85);
+    ctx.arc(cx + 28, cy + 44, 28, Math.PI * 1.15, Math.PI * 1.85);
     ctx.stroke();
   } else if (iconType === 'gateway') {
-    // Gateway network hub with branching nodes
+    // Router / Gateway network hub with branching nodes
     ctx.beginPath();
-    ctx.arc(cx, cy, 9, 0, Math.PI * 2);
+    ctx.arc(cx, cy, 18, 0, Math.PI * 2);
     ctx.stroke();
     ctx.beginPath();
-    ctx.arc(cx - 20, cy - 16, 5, 0, Math.PI * 2);
-    ctx.moveTo(cx - 15, cy - 12);
-    ctx.lineTo(cx - 7, cy - 6);
+    ctx.arc(cx - 40, cy - 32, 10, 0, Math.PI * 2);
+    ctx.moveTo(cx - 30, cy - 24);
+    ctx.lineTo(cx - 14, cy - 12);
     ctx.stroke();
     ctx.beginPath();
-    ctx.arc(cx + 20, cy - 16, 5, 0, Math.PI * 2);
-    ctx.moveTo(cx + 15, cy - 12);
-    ctx.lineTo(cx + 7, cy - 6);
+    ctx.arc(cx + 40, cy - 32, 10, 0, Math.PI * 2);
+    ctx.moveTo(cx + 30, cy - 24);
+    ctx.lineTo(cx + 14, cy - 12);
     ctx.stroke();
     ctx.beginPath();
-    ctx.arc(cx, cy + 22, 5, 0, Math.PI * 2);
-    ctx.moveTo(cx, cy + 9);
-    ctx.lineTo(cx, cy + 17);
+    ctx.arc(cx, cy + 44, 10, 0, Math.PI * 2);
+    ctx.moveTo(cx, cy + 18);
+    ctx.lineTo(cx, cy + 34);
     ctx.stroke();
   } else if (iconType === 'shield') {
-    // Shield security icon
+    // Security Shield
     ctx.beginPath();
-    ctx.moveTo(cx, cy - 22);
-    ctx.lineTo(cx + 20, cy - 12);
-    ctx.lineTo(cx + 20, cy + 6);
-    ctx.quadraticCurveTo(cx + 20, cy + 22, cx, cy + 28);
-    ctx.quadraticCurveTo(cx - 20, cy + 22, cx - 20, cy + 6);
-    ctx.lineTo(cx - 20, cy - 12);
+    ctx.moveTo(cx, cy - 44);
+    ctx.lineTo(cx + 40, cy - 24);
+    ctx.lineTo(cx + 40, cy + 12);
+    ctx.quadraticCurveTo(cx + 40, cy + 44, cx, cy + 56);
+    ctx.quadraticCurveTo(cx - 40, cy + 44, cx - 40, cy + 12);
+    ctx.lineTo(cx - 40, cy - 24);
     ctx.closePath();
     ctx.stroke();
-    // Inner check/lock symbol
+    // Inner checkmark
     ctx.beginPath();
-    ctx.moveTo(cx - 8, cy + 2);
-    ctx.lineTo(cx - 2, cy + 8);
-    ctx.lineTo(cx + 9, cy - 4);
+    ctx.moveTo(cx - 16, cy + 4);
+    ctx.lineTo(cx - 4, cy + 16);
+    ctx.lineTo(cx + 18, cy - 8);
     ctx.stroke();
   } else if (iconType === 'database') {
-    // Server database cylinder stack (for paymentservice & redis)
-    const w = 22;
-    const h = 8;
+    // Server database cylinder stack (for paymentservice & redis-cart)
+    const w = 44;
+    const h = 16;
     // Top ellipse
     ctx.beginPath();
-    ctx.ellipse(cx, cy - 12, w, h, 0, 0, Math.PI * 2);
+    ctx.ellipse(cx, cy - 24, w, h, 0, 0, Math.PI * 2);
     ctx.stroke();
     // Middle rib
     ctx.beginPath();
-    ctx.ellipse(cx, cy + 2, w, h, 0, 0, Math.PI);
+    ctx.ellipse(cx, cy + 4, w, h, 0, 0, Math.PI);
     ctx.stroke();
     // Bottom ellipse
     ctx.beginPath();
-    ctx.ellipse(cx, cy + 16, w, h, 0, 0, Math.PI);
+    ctx.ellipse(cx, cy + 32, w, h, 0, 0, Math.PI);
     ctx.stroke();
     // Vertical side lines
     ctx.beginPath();
-    ctx.moveTo(cx - w, cy - 12);
-    ctx.lineTo(cx - w, cy + 16);
-    ctx.moveTo(cx + w, cy - 12);
-    ctx.lineTo(cx + w, cy + 16);
+    ctx.moveTo(cx - w, cy - 24);
+    ctx.lineTo(cx - w, cy + 32);
+    ctx.moveTo(cx + w, cy - 24);
+    ctx.lineTo(cx + w, cy + 32);
     ctx.stroke();
   } else if (iconType === 'cart') {
     // Shopping cart
     ctx.beginPath();
-    ctx.moveTo(cx - 22, cy - 16);
-    ctx.lineTo(cx - 14, cy - 16);
-    ctx.lineTo(cx - 6, cy + 6);
-    ctx.lineTo(cx + 18, cy + 6);
-    ctx.lineTo(cx + 22, cy - 8);
-    ctx.lineTo(cx - 9, cy - 8);
+    ctx.moveTo(cx - 44, cy - 32);
+    ctx.lineTo(cx - 28, cy - 32);
+    ctx.lineTo(cx - 12, cy + 12);
+    ctx.lineTo(cx + 36, cy + 12);
+    ctx.lineTo(cx + 44, cy - 16);
+    ctx.lineTo(cx - 18, cy - 16);
     ctx.stroke();
     ctx.beginPath();
-    ctx.arc(cx - 4, cy + 16, 4, 0, Math.PI * 2);
-    ctx.arc(cx + 15, cy + 16, 4, 0, Math.PI * 2);
+    ctx.arc(cx - 8, cy + 32, 8, 0, Math.PI * 2);
+    ctx.arc(cx + 30, cy + 32, 8, 0, Math.PI * 2);
     ctx.fill();
   } else if (iconType === 'monitor') {
     // Desktop monitor
     ctx.beginPath();
-    ctx.roundRect(cx - 22, cy - 18, 44, 28, 4);
+    ctx.roundRect(cx - 44, cy - 36, 88, 56, 8);
     ctx.stroke();
     ctx.beginPath();
-    ctx.moveTo(cx, cy + 10);
-    ctx.lineTo(cx, cy + 18);
-    ctx.moveTo(cx - 12, cy + 18);
-    ctx.lineTo(cx + 12, cy + 18);
+    ctx.moveTo(cx, cy + 20);
+    ctx.lineTo(cx, cy + 36);
+    ctx.moveTo(cx - 24, cy + 36);
+    ctx.lineTo(cx + 24, cy + 36);
     ctx.stroke();
   } else if (iconType === 'currency') {
     // Dollar coin
     ctx.beginPath();
-    ctx.arc(cx, cy, 20, 0, Math.PI * 2);
+    ctx.arc(cx, cy, 40, 0, Math.PI * 2);
     ctx.stroke();
-    ctx.font = 'bold 24px Inter, sans-serif';
+    ctx.font = 'bold 48px Inter, sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText('$', cx, cy + 1);
+    ctx.fillText('$', cx, cy + 2);
   } else if (iconType === 'truck') {
     // Delivery truck
     ctx.beginPath();
-    ctx.rect(cx - 22, cy - 12, 26, 20);
-    ctx.moveTo(cx + 4, cy - 2);
-    ctx.lineTo(cx + 14, cy - 2);
-    ctx.lineTo(cx + 20, cy + 6);
-    ctx.lineTo(cx + 20, cy + 8);
-    ctx.lineTo(cx + 4, cy + 8);
+    ctx.rect(cx - 44, cy - 24, 52, 40);
+    ctx.moveTo(cx + 8, cy - 4);
+    ctx.lineTo(cx + 28, cy - 4);
+    ctx.lineTo(cx + 40, cy + 12);
+    ctx.lineTo(cx + 40, cy + 16);
+    ctx.lineTo(cx + 8, cy + 16);
     ctx.stroke();
     ctx.beginPath();
-    ctx.arc(cx - 11, cy + 16, 4, 0, Math.PI * 2);
-    ctx.arc(cx + 13, cy + 16, 4, 0, Math.PI * 2);
+    ctx.arc(cx - 22, cy + 32, 8, 0, Math.PI * 2);
+    ctx.arc(cx + 26, cy + 32, 8, 0, Math.PI * 2);
     ctx.fill();
   } else if (iconType === 'grid') {
-    // 2x2 recommendations grid
-    const s = 12;
+    // Recommendations 2x2 grid
+    const s = 24;
     ctx.beginPath();
-    ctx.roundRect(cx - 16, cy - 16, s, s, 3);
-    ctx.roundRect(cx + 4, cy - 16, s, s, 3);
-    ctx.roundRect(cx - 16, cy + 4, s, s, 3);
-    ctx.roundRect(cx + 4, cy + 4, s, s, 3);
+    ctx.roundRect(cx - 32, cy - 32, s, s, 6);
+    ctx.roundRect(cx + 8, cy - 32, s, s, 6);
+    ctx.roundRect(cx - 32, cy + 8, s, s, 6);
+    ctx.roundRect(cx + 8, cy + 8, s, s, 6);
     ctx.stroke();
   } else if (iconType === 'mail') {
     // Mail envelope
     ctx.beginPath();
-    ctx.rect(cx - 20, cy - 14, 40, 28);
-    ctx.moveTo(cx - 20, cy - 14);
-    ctx.lineTo(cx, cy + 2);
-    ctx.lineTo(cx + 20, cy - 14);
+    ctx.rect(cx - 40, cy - 28, 80, 56);
+    ctx.moveTo(cx - 40, cy - 28);
+    ctx.lineTo(cx, cy + 4);
+    ctx.lineTo(cx + 40, cy - 28);
     ctx.stroke();
   } else {
-    // Default system box
+    // Default server chassis
     ctx.beginPath();
-    ctx.roundRect(cx - 16, cy - 16, 32, 32, 5);
+    ctx.roundRect(cx - 32, cy - 32, 64, 64, 10);
     ctx.stroke();
   }
   ctx.restore();
 }
 
-// Generate the 512x512 high-resolution station face texture
-function createStationTexture(
+// Generate the 1024x1024 ultra-crisp station front face texture
+function createStationFaceTexture(
   name: string,
   iconType: string,
   status: 'critical' | 'warning' | 'healthy' | 'unknown'
 ) {
   const canvas = document.createElement('canvas');
-  canvas.width = 512;
-  canvas.height = 512;
+  canvas.width = 1024;
+  canvas.height = 1024;
   const ctx = canvas.getContext('2d');
   if (!ctx) return null;
 
-  // Background chassis plate
-  ctx.fillStyle = '#141412';
-  ctx.fillRect(0, 0, 512, 512);
+  // Dark obsidian chassis plate
+  ctx.fillStyle = '#11110F';
+  ctx.fillRect(0, 0, 1024, 1024);
 
-  // Subtle metallic texture gradient
-  const grad = ctx.createLinearGradient(0, 0, 512, 512);
-  grad.addColorStop(0, 'rgba(255, 255, 255, 0.05)');
-  grad.addColorStop(0.5, 'transparent');
-  grad.addColorStop(1, 'rgba(0, 0, 0, 0.4)');
+  // Subtle metallic diagonal sheen
+  const grad = ctx.createLinearGradient(0, 0, 1024, 1024);
+  grad.addColorStop(0, 'rgba(255, 255, 255, 0.08)');
+  grad.addColorStop(0.5, 'rgba(255, 255, 255, 0.01)');
+  grad.addColorStop(1, 'rgba(0, 0, 0, 0.5)');
   ctx.fillStyle = grad;
-  ctx.fillRect(0, 0, 512, 512);
+  ctx.fillRect(0, 0, 1024, 1024);
 
-  // Border Accent Rim
   const accentColor =
     status === 'critical'
       ? '#FF453A'
@@ -240,52 +245,58 @@ function createStationTexture(
       ? '#35C98A'
       : '#706E67';
 
+  // Outer Glowing Accent Rim
   ctx.strokeStyle = accentColor;
-  ctx.lineWidth = status === 'critical' ? 12 : 8;
+  ctx.lineWidth = status === 'critical' ? 24 : 16;
   ctx.beginPath();
-  ctx.roundRect(16, 16, 480, 480, 24);
+  ctx.roundRect(32, 32, 960, 960, 48);
   ctx.stroke();
 
-  // Draw Central Service Vector Icon
-  drawServiceVectorIcon(ctx, iconType, 256, 150, accentColor);
-
-  // Service Name Typography
-  ctx.fillStyle = '#F5F1E8';
-  ctx.font = 'bold 36px Inter, sans-serif';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'alphabetic';
-  ctx.fillText(name, 256, 290);
-
-  // Bottom Status Pill
-  const pillWidth = 240;
-  const pillHeight = 56;
-  const pillX = (512 - pillWidth) / 2;
-  const pillY = 360;
-
-  // Pill Background
-  ctx.fillStyle =
-    status === 'critical'
-      ? 'rgba(255, 69, 58, 0.16)'
-      : status === 'warning'
-      ? 'rgba(245, 166, 35, 0.16)'
-      : status === 'healthy'
-      ? 'rgba(53, 201, 138, 0.16)'
-      : 'rgba(112, 110, 103, 0.16)';
-  ctx.beginPath();
-  ctx.roundRect(pillX, pillY, pillWidth, pillHeight, 28);
-  ctx.fill();
-
-  ctx.strokeStyle = accentColor;
-  ctx.lineWidth = 3;
-  ctx.stroke();
-
-  // Status Dot
+  // Top Accent LED strip
   ctx.fillStyle = accentColor;
   ctx.beginPath();
-  ctx.arc(pillX + 42, pillY + 28, 9, 0, Math.PI * 2);
+  ctx.roundRect(256, 44, 512, 12, 6);
   ctx.fill();
 
-  // Status Text
+  // Central Service Vector Icon
+  drawServiceVectorIcon(ctx, iconType, 512, 330, accentColor);
+
+  // Service Name in bold crisp typography
+  ctx.fillStyle = '#FFFFFF';
+  ctx.font = 'bold 64px Inter, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'alphabetic';
+  ctx.fillText(name, 512, 600);
+
+  // Status Pill at Bottom
+  const pillWidth = 480;
+  const pillHeight = 112;
+  const pillX = (1024 - pillWidth) / 2;
+  const pillY = 720;
+
+  ctx.fillStyle =
+    status === 'critical'
+      ? 'rgba(255, 69, 58, 0.22)'
+      : status === 'warning'
+      ? 'rgba(245, 166, 35, 0.22)'
+      : status === 'healthy'
+      ? 'rgba(53, 201, 138, 0.22)'
+      : 'rgba(112, 110, 103, 0.22)';
+  ctx.beginPath();
+  ctx.roundRect(pillX, pillY, pillWidth, pillHeight, 56);
+  ctx.fill();
+
+  ctx.strokeStyle = accentColor;
+  ctx.lineWidth = 6;
+  ctx.stroke();
+
+  // Glowing status dot
+  ctx.fillStyle = accentColor;
+  ctx.beginPath();
+  ctx.arc(pillX + 80, pillY + 56, 18, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Status Label Text
   const statusLabel =
     status === 'critical'
       ? 'Failing'
@@ -296,66 +307,65 @@ function createStationTexture(
       : 'Unaffected';
 
   ctx.fillStyle = accentColor;
-  ctx.font = 'bold 24px Inter, sans-serif';
+  ctx.font = 'bold 50px Inter, sans-serif';
   ctx.textAlign = 'left';
   ctx.textBaseline = 'middle';
-  ctx.fillText(statusLabel, pillX + 64, pillY + 29);
+  ctx.fillText(statusLabel, pillX + 128, pillY + 58);
 
   const texture = new THREE.CanvasTexture(canvas);
   texture.needsUpdate = true;
   return texture;
 }
 
-// Generate the floating Holographic Sparkline HUD Card for paymentservice
+// Generate the large floating Holographic Sparkline HUD Card for paymentservice
 function createHolographicSparklineTexture() {
   const canvas = document.createElement('canvas');
-  canvas.width = 384;
-  canvas.height = 160;
+  canvas.width = 600;
+  canvas.height = 240;
   const ctx = canvas.getContext('2d');
   if (!ctx) return null;
 
-  // Dark translucent background plate
-  ctx.fillStyle = 'rgba(17, 17, 15, 0.92)';
+  // Translucent dark plate with glowing red rim
+  ctx.fillStyle = 'rgba(15, 15, 13, 0.94)';
   ctx.beginPath();
-  ctx.roundRect(8, 8, 368, 144, 16);
+  ctx.roundRect(12, 12, 576, 216, 24);
   ctx.fill();
 
-  // Glowing red rim
   ctx.strokeStyle = '#FF453A';
-  ctx.lineWidth = 4;
+  ctx.lineWidth = 6;
   ctx.stroke();
 
-  // Top Line: "500s   68%"
+  // Top Header: "500s" (left) and "68%" (right)
   ctx.fillStyle = '#FF453A';
-  ctx.font = 'bold 36px Inter, sans-serif';
+  ctx.font = 'bold 56px Inter, sans-serif';
   ctx.textAlign = 'left';
-  ctx.fillText('500s', 32, 56);
+  ctx.fillText('500s', 48, 88);
 
-  ctx.font = 'bold 36px Inter, sans-serif';
   ctx.textAlign = 'right';
-  ctx.fillText('68%', 352, 56);
+  ctx.fillText('68%', 552, 88);
 
   // Sub-row: "p95 2.5s"
   ctx.fillStyle = '#A6A197';
-  ctx.font = '600 20px monospace';
+  ctx.font = 'bold 30px monospace';
   ctx.textAlign = 'left';
-  ctx.fillText('p95 2.5s', 32, 110);
+  ctx.fillText('p95 2.5s', 48, 170);
 
-  // Sparkline Waveform Chart
+  // Sparkline Chart Waveform
   ctx.strokeStyle = '#FF453A';
-  ctx.lineWidth = 3.5;
+  ctx.lineWidth = 5;
   ctx.beginPath();
   const sparkPoints = [
-    [180, 118],
-    [200, 115],
-    [220, 120],
-    [240, 105],
-    [260, 114],
-    [280, 92],
-    [300, 102],
-    [320, 80],
-    [340, 94],
-    [352, 85],
+    [260, 180],
+    [290, 175],
+    [320, 182],
+    [350, 158],
+    [380, 170],
+    [410, 138],
+    [440, 152],
+    [470, 120],
+    [500, 142],
+    [530, 128],
+    [550, 134],
   ];
   sparkPoints.forEach(([x, y], idx) => {
     if (idx === 0) ctx.moveTo(x, y);
@@ -363,11 +373,11 @@ function createHolographicSparklineTexture() {
   });
   ctx.stroke();
 
-  // Sparkline gradient fill underneath
-  ctx.lineTo(352, 130);
-  ctx.lineTo(180, 130);
+  // Subtle gradient fill under sparkline
+  ctx.lineTo(550, 196);
+  ctx.lineTo(260, 196);
   ctx.closePath();
-  ctx.fillStyle = 'rgba(255, 69, 58, 0.2)';
+  ctx.fillStyle = 'rgba(255, 69, 58, 0.25)';
   ctx.fill();
 
   const texture = new THREE.CanvasTexture(canvas);
@@ -375,32 +385,66 @@ function createHolographicSparklineTexture() {
   return texture;
 }
 
-// Generate floating pill badge sprite
+// Generate floating metric badge pill
 function createMetricBadgeTexture(text: string, colorHex: string) {
   const canvas = document.createElement('canvas');
-  canvas.width = 256;
-  canvas.height = 76;
+  canvas.width = 380;
+  canvas.height = 110;
   const ctx = canvas.getContext('2d');
   if (!ctx) return null;
 
-  // Dark translucent background with colored border
-  ctx.fillStyle = 'rgba(17, 17, 15, 0.94)';
+  ctx.fillStyle = 'rgba(15, 15, 13, 0.94)';
   ctx.beginPath();
-  ctx.roundRect(8, 8, 240, 60, 30);
+  ctx.roundRect(10, 10, 360, 90, 45);
   ctx.fill();
 
   ctx.strokeStyle = colorHex;
-  ctx.lineWidth = 3;
+  ctx.lineWidth = 5;
   ctx.stroke();
 
-  // Text
-  ctx.fillStyle = '#F5F1E8';
-  ctx.font = 'bold 26px Inter, sans-serif';
+  ctx.fillStyle = '#FFFFFF';
+  ctx.font = 'bold 38px Inter, sans-serif';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText(text, 128, 38);
+  ctx.fillText(text, 190, 56);
 
   const texture = new THREE.CanvasTexture(canvas);
+  texture.needsUpdate = true;
+  return texture;
+}
+
+// Generate tiled metallic floor texture
+function createFloorTileTexture() {
+  const canvas = document.createElement('canvas');
+  canvas.width = 512;
+  canvas.height = 512;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return null;
+
+  // Tile background
+  ctx.fillStyle = '#0B0B0A';
+  ctx.fillRect(0, 0, 512, 512);
+
+  // 4 floor tiles with beveled seams
+  const tileSize = 256;
+  for (let r = 0; r < 2; r++) {
+    for (let c = 0; c < 2; c++) {
+      const x = c * tileSize;
+      const y = r * tileSize;
+      ctx.fillStyle = '#10100E';
+      ctx.fillRect(x + 2, y + 2, tileSize - 4, tileSize - 4);
+
+      // Fine metallic grid border
+      ctx.strokeStyle = '#1C1C18';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(x + 2, y + 2, tileSize - 4, tileSize - 4);
+    }
+  }
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.wrapS = THREE.RepeatWrapping;
+  texture.wrapT = THREE.RepeatWrapping;
+  texture.repeat.set(12, 12);
   texture.needsUpdate = true;
   return texture;
 }
@@ -414,7 +458,7 @@ export const SystemScene3D: React.FC<SystemScene3DProps> = ({
   selectedNodeFilter,
   onSelectNode,
   onOpenInspector,
-  height = 590,
+  height = 620,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -433,7 +477,7 @@ export const SystemScene3D: React.FC<SystemScene3DProps> = ({
   const [selectedServiceData, setSelectedServiceData] = useState<ServiceLayoutNode | null>(null);
   const [webglSupported, setWebglSupported] = useState<boolean>(true);
 
-  // Deterministic Incident Topology Layout
+  // Deterministic Diamond Layout matching reference image
   const serviceStations = useMemo<ServiceLayoutNode[]>(() => {
     const rawNodes =
       nodes.length > 0
@@ -454,7 +498,6 @@ export const SystemScene3D: React.FC<SystemScene3DProps> = ({
             { id: 'productcatalogservice', name: 'productcatalogservice', label: 'Service' },
           ];
 
-    // Compute in/out degree
     const callersMap: Record<string, string[]> = {};
     const calleesMap: Record<string, string[]> = {};
 
@@ -471,24 +514,32 @@ export const SystemScene3D: React.FC<SystemScene3DProps> = ({
       if (callersMap[tgt] && !callersMap[tgt].includes(src)) callersMap[tgt].push(src);
     });
 
-    // Reference Spatial Coordinates for the 13 canonical storefront services
+    // Exact Spatial Coordinates matching the reference composition
     const fixedCoords: Record<string, [number, number, number]> = {
-      usertraffic: [-24, 0, 4],
-      'api-gateway': [-15, 0, 2],
-      'auth-service': [-10, 0, -11],
-      paymentservice: [0, 0.4, 0], // Centerpiece elevated
-      'redis-cart': [10, 0, -11],
-      checkoutservice: [11, 0, 2],
-      frontend: [21, 0, -5],
-      currencyservice: [-10, 0, 13],
-      shippingservice: [0, 0, 13],
-      recommendationservice: [10, 0, 13],
-      emailservice: [20, 0, 13],
-      cartservice: [-2, 0, -12],
-      productcatalogservice: [20, 0, 4],
+      // Centerpiece: elevated focal point
+      paymentservice: [0, 1.2, 0],
+
+      // Back row
+      'auth-service': [-8.5, 0.4, -9.5],
+      'redis-cart': [8.5, 0.4, -9.5],
+      frontend: [18.5, 0.4, -6],
+
+      // Middle row
+      usertraffic: [-20, 0.4, 3],
+      'api-gateway': [-10, 0.4, 2],
+      checkoutservice: [10, 0.4, 2],
+
+      // Front row
+      currencyservice: [-9, 0.4, 11],
+      shippingservice: [1, 0.4, 12],
+      recommendationservice: [10.5, 0.4, 12],
+      emailservice: [20, 0.4, 11],
+
+      // Peripheral services
+      cartservice: [-1, 0.4, -10.5],
+      productcatalogservice: [19, 0.4, 3],
     };
 
-    // Metadata mappings matching reference image
     const metaMap: Record<
       string,
       {
@@ -507,7 +558,7 @@ export const SystemScene3D: React.FC<SystemScene3DProps> = ({
         icon: 'users',
         overheadMetric: '1.28k Traffic',
         tier: 'ingress',
-        tierLabel: 'External Traffic',
+        tierLabel: 'External Ingress',
         status: 'healthy',
         badge: '1.28k Traffic',
         latency: '12ms',
@@ -529,7 +580,7 @@ export const SystemScene3D: React.FC<SystemScene3DProps> = ({
         icon: 'shield',
         overheadMetric: '1360tps',
         tier: 'aggregation',
-        tierLabel: 'Security Core',
+        tierLabel: 'Security Auth',
         status: 'healthy',
         badge: 'Healthy',
         latency: '38ms',
@@ -617,7 +668,7 @@ export const SystemScene3D: React.FC<SystemScene3DProps> = ({
         icon: 'mail',
         overheadMetric: '930tps',
         tier: 'domain',
-        tierLabel: 'Transactional Notifications',
+        tierLabel: 'Notifications',
         status: 'unknown',
         badge: 'Unaffected',
         latency: '35ms',
@@ -639,7 +690,7 @@ export const SystemScene3D: React.FC<SystemScene3DProps> = ({
         icon: 'grid',
         overheadMetric: '410tps',
         tier: 'domain',
-        tierLabel: 'Product Catalog Store',
+        tierLabel: 'Catalog Store',
         status: 'healthy',
         badge: 'Healthy',
         latency: '28ms',
@@ -655,7 +706,7 @@ export const SystemScene3D: React.FC<SystemScene3DProps> = ({
         icon: 'database',
         overheadMetric: '42ms',
         tier: 'domain',
-        tierLabel: 'Service Domain',
+        tierLabel: 'Domain Service',
         status: isAlerting ? 'critical' : 'healthy',
         badge: isAlerting ? 'Failing' : 'Healthy',
         latency: isAlerting ? '2.5s' : '42ms',
@@ -663,16 +714,14 @@ export const SystemScene3D: React.FC<SystemScene3DProps> = ({
         throughput: '450 req/s',
       };
 
-      // Position: use fixed coordinates if known, else arrange symmetrically
       let pos: [number, number, number] = fixedCoords[id] || [
-        ((idx % 4) - 1.5) * 12,
-        0,
-        Math.floor(idx / 4) * 10 - 10,
+        ((idx % 4) - 1.5) * 11,
+        0.4,
+        Math.floor(idx / 4) * 9 - 9,
       ];
 
-      // If a non-paymentservice service is alerting, center it
       if (isAlerting && id !== 'paymentservice') {
-        pos = [0, 0.4, 0];
+        pos = [0, 1.2, 0];
       }
 
       const status = isAlerting ? 'critical' : meta.status;
@@ -724,17 +773,17 @@ export const SystemScene3D: React.FC<SystemScene3DProps> = ({
     }
 
     const scene = new THREE.Scene();
-    const width = containerRef.current.clientWidth || 920;
+    const width = containerRef.current.clientWidth || 960;
     const sceneHeight = height;
 
     renderer.setSize(width, sceneHeight);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.1;
+    renderer.toneMappingExposure = 1.15;
 
-    // Perspective Camera: Gently elevated isometric perspective
-    const camera = new THREE.PerspectiveCamera(34, width / sceneHeight, 0.5, 1000);
-    camera.position.set(0, 36, 48);
+    // Cinematic Isometric Camera Framing
+    const camera = new THREE.PerspectiveCamera(38, width / sceneHeight, 0.5, 1000);
+    camera.position.set(0, 22, 28);
     cameraRef.current = camera;
 
     // OrbitControls
@@ -742,63 +791,52 @@ export const SystemScene3D: React.FC<SystemScene3DProps> = ({
     controls.enableDamping = true;
     controls.dampingFactor = 0.08;
     controls.maxPolarAngle = Math.PI / 2.05;
-    controls.minDistance = 14;
-    controls.maxDistance = 95;
-    controls.target.set(0, 0, 0);
+    controls.minDistance = 12;
+    controls.maxDistance = 80;
+    controls.target.set(0, 1.0, 0);
     controls.update();
     controlsRef.current = controls;
 
-    // Fit view framing helper
+    // Fit View function
     const fitTopology = () => {
-      if (serviceStations.length === 0) return;
-      const box = new THREE.Box3();
-      serviceStations.forEach((s) => {
-        box.expandByPoint(new THREE.Vector3(...s.position));
-      });
-      const center = new THREE.Vector3();
-      box.getCenter(center);
-      const size = new THREE.Vector3();
-      box.getSize(size);
-      const maxDim = Math.max(size.x, size.z, 22);
-      const fov = camera.fov * (Math.PI / 180);
-      let cameraZ = Math.abs(maxDim / 2 / Math.tan(fov / 2)) * 1.15;
-
-      controls.target.copy(center);
-      camera.position.set(center.x, cameraZ * 0.65, center.z + cameraZ * 0.85);
+      controls.target.set(0, 1.0, 0);
+      camera.position.set(0, 22, 28);
       controls.update();
     };
     fitTopologyRef.current = fitTopology;
 
     // Lighting
-    const ambientLight = new THREE.AmbientLight(0xf5f1e8, 0.65);
+    const ambientLight = new THREE.AmbientLight(0xf5f1e8, 0.7);
     scene.add(ambientLight);
 
-    const dirLight = new THREE.DirectionalLight(0xfff7ed, 1.3);
+    const dirLight = new THREE.DirectionalLight(0xfff7ed, 1.4);
     dirLight.position.set(24, 45, 26);
     scene.add(dirLight);
 
-    const coolFill = new THREE.DirectionalLight(0x38bdf8, 0.25);
+    const coolFill = new THREE.DirectionalLight(0x38bdf8, 0.35);
     coolFill.position.set(-24, 30, -20);
     scene.add(coolFill);
 
-    // Dynamic Failure Core PointLight for paymentservice
-    const failurePointLight = new THREE.PointLight(0xff453a, 4.2, 40);
+    // Powerful Core PointLights for dramatic local illumination
+    const failurePointLight = new THREE.PointLight(0xff453a, 5.5, 32);
     scene.add(failurePointLight);
 
-    // Industrial Dark Ground Grid
-    const gridHelper = new THREE.GridHelper(90, 45, 0x2a2925, 0x171714);
-    gridHelper.position.y = -0.05;
-    scene.add(gridHelper);
+    const warningPointLight = new THREE.PointLight(0xf5a623, 3.2, 24);
+    warningPointLight.position.set(10, 2, 2);
+    scene.add(warningPointLight);
 
-    // Platform Base Floor Plate
-    const floorGeo = new THREE.CylinderGeometry(46, 47, 1.2, 64);
+    // Dark Tiled Industrial Floor
+    const floorTexture = createFloorTileTexture();
+    const floorGeo = new THREE.PlaneGeometry(80, 80);
     const floorMat = new THREE.MeshStandardMaterial({
-      color: 0x0e0e0c,
-      roughness: 0.88,
-      metalness: 0.45,
+      map: floorTexture || undefined,
+      color: 0x0c0c0a,
+      roughness: 0.75,
+      metalness: 0.6,
     });
     const floor = new THREE.Mesh(floorGeo, floorMat);
-    floor.position.y = -0.7;
+    floor.rotation.x = -Math.PI / 2;
+    floor.position.y = -0.05;
     scene.add(floor);
 
     // Node Meshes & Overhead Sprites
@@ -807,8 +845,8 @@ export const SystemScene3D: React.FC<SystemScene3DProps> = ({
 
     const stationMeshMap = new Map<string, THREE.Mesh>();
     const stationSprites: THREE.Sprite[] = [];
-    const boxGeo = new THREE.BoxGeometry(3.8, 2.2, 3.8);
-    const basePedestalGeo = new THREE.CylinderGeometry(2.6, 2.7, 0.35, 32);
+    const boxGeo = new THREE.BoxGeometry(4.4, 3.0, 4.4);
+    const plinthGeo = new THREE.BoxGeometry(5.2, 0.5, 5.2);
 
     const causalPathNodes = new Set<string>([
       'usertraffic',
@@ -824,7 +862,6 @@ export const SystemScene3D: React.FC<SystemScene3DProps> = ({
       const isCritical = station.status === 'critical';
       const isWarning = station.status === 'warning';
 
-      // Mode-dependent visibility & dimming
       let opacity = 1.0;
       if (visMode === 'impact') {
         const inBlastRadius = isCritical || isWarning;
@@ -845,36 +882,36 @@ export const SystemScene3D: React.FC<SystemScene3DProps> = ({
       const accentHex =
         isCritical ? 0xff453a : isWarning ? 0xf5a623 : station.status === 'healthy' ? 0x35c98a : 0x706e67;
 
-      // Base Pedestal Mesh
-      const pedestalMat = new THREE.MeshStandardMaterial({
-        color: 0x11110f,
-        roughness: 0.85,
-        metalness: 0.5,
+      // Base Plinth Pedestal
+      const plinthMat = new THREE.MeshStandardMaterial({
+        color: 0x0a0a08,
+        roughness: 0.7,
+        metalness: 0.8,
         transparent: true,
         opacity,
       });
-      const pedestal = new THREE.Mesh(basePedestalGeo, pedestalMat);
-      pedestal.position.set(station.position[0], station.position[1] + 0.18, station.position[2]);
-      stationGroup.add(pedestal);
+      const plinth = new THREE.Mesh(plinthGeo, plinthMat);
+      plinth.position.set(station.position[0], station.position[1] + 0.25, station.position[2]);
+      stationGroup.add(plinth);
 
-      // Main Station Cube with Custom Textured Face
-      const faceTexture = createStationTexture(station.name, station.iconType, station.status);
+      // Main Station Server Cube
+      const faceTexture = createStationFaceTexture(station.name, station.iconType, station.status);
       const frontMat = faceTexture
         ? new THREE.MeshStandardMaterial({
             map: faceTexture,
-            roughness: 0.35,
-            metalness: 0.65,
+            roughness: 0.3,
+            metalness: 0.7,
             transparent: true,
             opacity,
           })
-        : new THREE.MeshStandardMaterial({ color: 0x171714 });
+        : new THREE.MeshStandardMaterial({ color: 0x11110f });
 
       const sideMat = new THREE.MeshStandardMaterial({
-        color: isCritical ? 0x241210 : isSelected ? 0x2b1c15 : 0x161614,
-        roughness: 0.4,
-        metalness: 0.8,
+        color: isCritical ? 0x22100e : isSelected ? 0x2b1c15 : 0x141412,
+        roughness: 0.35,
+        metalness: 0.85,
         emissive: accentHex,
-        emissiveIntensity: isCritical ? 0.45 : isSelected ? 0.5 : isHighlighted ? 0.28 : 0.05,
+        emissiveIntensity: isCritical ? 0.7 : isSelected ? 0.6 : isWarning ? 0.45 : isHighlighted ? 0.3 : 0.08,
         transparent: true,
         opacity,
       });
@@ -882,20 +919,20 @@ export const SystemScene3D: React.FC<SystemScene3DProps> = ({
       // Front, back, and sides
       const materials = [sideMat, sideMat, sideMat, sideMat, frontMat, frontMat];
       const mesh = new THREE.Mesh(boxGeo, materials);
-      mesh.position.set(station.position[0], station.position[1] + 1.25, station.position[2]);
+      mesh.position.set(station.position[0], station.position[1] + 1.8, station.position[2]);
       mesh.userData = { station };
       stationGroup.add(mesh);
       stationMeshMap.set(station.id, mesh);
 
-      // Red ground floor decal for critical failure node
+      // Glowing Floor Aura under critical failure node
       if (isCritical) {
-        failurePointLight.position.set(station.position[0], station.position[1] + 2.8, station.position[2]);
+        failurePointLight.position.set(station.position[0], station.position[1] + 2.5, station.position[2]);
 
-        const floorDecalGeo = new THREE.RingGeometry(2.8, 5.2, 32);
+        const floorDecalGeo = new THREE.RingGeometry(3.0, 7.5, 32);
         const floorDecalMat = new THREE.MeshBasicMaterial({
           color: 0xff453a,
           transparent: true,
-          opacity: 0.35,
+          opacity: 0.45,
           side: THREE.DoubleSide,
         });
         const floorDecal = new THREE.Mesh(floorDecalGeo, floorDecalMat);
@@ -911,27 +948,27 @@ export const SystemScene3D: React.FC<SystemScene3DProps> = ({
         if (holoTex) {
           const holoMat = new THREE.SpriteMaterial({ map: holoTex, transparent: true, opacity });
           const holoSprite = new THREE.Sprite(holoMat);
-          holoSprite.position.set(station.position[0], station.position[1] + 4.1, station.position[2]);
-          holoSprite.scale.set(5.2, 2.1, 1);
+          holoSprite.position.set(station.position[0], station.position[1] + 5.2, station.position[2]);
+          holoSprite.scale.set(6.4, 2.5, 1);
           scene.add(holoSprite);
           stationSprites.push(holoSprite);
         }
       } else {
-        // Dark Floating Metric Pill for all other nodes
+        // Floating Metric Pill for other nodes
         const colorHex = isWarning ? '#F5A623' : station.status === 'healthy' ? '#35C98A' : '#706E67';
         const badgeTex = createMetricBadgeTexture(station.overheadMetric, colorHex);
         if (badgeTex) {
           const badgeMat = new THREE.SpriteMaterial({ map: badgeTex, transparent: true, opacity });
           const badgeSprite = new THREE.Sprite(badgeMat);
-          badgeSprite.position.set(station.position[0], station.position[1] + 3.2, station.position[2]);
-          badgeSprite.scale.set(3.4, 1.0, 1);
+          badgeSprite.position.set(station.position[0], station.position[1] + 4.2, station.position[2]);
+          badgeSprite.scale.set(4.0, 1.15, 1);
           scene.add(badgeSprite);
           stationSprites.push(badgeSprite);
         }
       }
     });
 
-    // Connecting Directional Edges & Animated Traffic Flow
+    // Connecting Directional Tubes & Particle Traffic
     const edgeGroup = new THREE.Group();
     scene.add(edgeGroup);
 
@@ -953,6 +990,7 @@ export const SystemScene3D: React.FC<SystemScene3DProps> = ({
             { source: 'paymentservice', target: 'checkoutservice', type: 'DEPENDS_ON' },
             { source: 'paymentservice', target: 'currencyservice', type: 'DEPENDS_ON' },
             { source: 'paymentservice', target: 'redis-cart', type: 'DEPENDS_ON' },
+            { source: 'paymentservice', target: 'shippingservice', type: 'DEPENDS_ON' },
             { source: 'checkoutservice', target: 'currencyservice', type: 'DEPENDS_ON' },
             { source: 'checkoutservice', target: 'shippingservice', type: 'DEPENDS_ON' },
             { source: 'checkoutservice', target: 'recommendationservice', type: 'DEPENDS_ON' },
@@ -969,35 +1007,35 @@ export const SystemScene3D: React.FC<SystemScene3DProps> = ({
 
       if (srcMesh && tgtMesh) {
         const p1 = srcMesh.position.clone();
-        p1.y = 0.45;
+        p1.y = 0.7;
         const p2 = tgtMesh.position.clone();
-        p2.y = 0.45;
+        p2.y = 0.7;
 
-        // Realistic architectural curve with mid-sag
+        // Realistic curve with gentle sag
         const mid = p1.clone().add(p2).multiplyScalar(0.5);
-        mid.y += 0.35;
+        mid.y += 0.45;
 
         const curve = new THREE.CatmullRomCurve3([p1, mid, p2]);
-        const tubeGeo = new THREE.TubeGeometry(curve, 24, 0.08, 8, false);
+        const tubeGeo = new THREE.TubeGeometry(curve, 28, 0.12, 10, false);
 
         const isFailureEdge =
           srcId === alertingService.toLowerCase() ||
           tgtId === alertingService.toLowerCase() ||
           (srcId === 'checkoutservice' && tgtId === 'paymentservice');
 
-        let edgeOpacity = 0.5;
+        let edgeOpacity = 0.55;
         if (visMode === 'impact') {
-          edgeOpacity = isFailureEdge ? 0.98 : 0.16;
+          edgeOpacity = isFailureEdge ? 1.0 : 0.18;
         } else if (visMode === 'causal') {
           edgeOpacity = isFailureEdge ? 1.0 : 0.08;
         }
 
         const pipeMat = new THREE.MeshStandardMaterial({
-          color: isFailureEdge ? 0xff453a : 0x3a3832,
-          emissive: isFailureEdge ? 0xff453a : 0x22211c,
-          emissiveIntensity: isFailureEdge ? 0.95 : 0.15,
-          roughness: 0.35,
-          metalness: 0.8,
+          color: isFailureEdge ? 0xff453a : 0x333b3d,
+          emissive: isFailureEdge ? 0xff453a : 0x164e63,
+          emissiveIntensity: isFailureEdge ? 1.2 : 0.25,
+          roughness: 0.3,
+          metalness: 0.85,
           transparent: true,
           opacity: edgeOpacity,
         });
@@ -1010,7 +1048,7 @@ export const SystemScene3D: React.FC<SystemScene3DProps> = ({
         const arrowPos = curve.getPointAt(arrowProgress);
         const arrowTangent = curve.getTangentAt(arrowProgress).normalize();
 
-        const coneGeo = new THREE.ConeGeometry(0.25, 0.65, 10);
+        const coneGeo = new THREE.ConeGeometry(0.32, 0.8, 12);
         const coneMat = new THREE.MeshBasicMaterial({
           color: isFailureEdge ? 0xff453a : 0xa6a197,
           transparent: true,
@@ -1021,12 +1059,12 @@ export const SystemScene3D: React.FC<SystemScene3DProps> = ({
         coneMesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), arrowTangent);
         edgeGroup.add(coneMesh);
 
-        // Traffic Flow Photon Light Particles
+        // Animated Traffic Light Pulses (bound strictly to this curve)
         const particleCount = isFailureEdge ? 3 : 2;
         for (let k = 0; k < particleCount; k++) {
-          const particleGeo = new THREE.SphereGeometry(0.22, 10, 10);
+          const particleGeo = new THREE.SphereGeometry(0.26, 12, 12);
           const particleMat = new THREE.MeshBasicMaterial({
-            color: isFailureEdge ? 0xff642d : 0x5eead4,
+            color: isFailureEdge ? 0xff642d : 0x38bdf8,
           });
           const particleMesh = new THREE.Mesh(particleGeo, particleMat);
           scene.add(particleMesh);
@@ -1035,13 +1073,13 @@ export const SystemScene3D: React.FC<SystemScene3DProps> = ({
             curve,
             mesh: particleMesh,
             progress: (k / particleCount) + Math.random() * 0.1,
-            speed: 0.0035 + Math.random() * 0.0015,
+            speed: 0.004 + Math.random() * 0.0015,
           });
         }
       }
     });
 
-    // Initial Camera Framing
+    // Initial Framing
     fitTopology();
 
     // Raycasting for Hover & Node Selection
@@ -1082,8 +1120,7 @@ export const SystemScene3D: React.FC<SystemScene3DProps> = ({
         if (station) {
           setSelectedServiceData(station);
           onSelectNode(station.raw);
-          // Smooth focus towards selected station
-          controls.target.set(station.position[0], station.position[1] + 1.2, station.position[2]);
+          controls.target.set(station.position[0], station.position[1] + 1.8, station.position[2]);
         }
       }
     };
@@ -1101,7 +1138,7 @@ export const SystemScene3D: React.FC<SystemScene3DProps> = ({
       const time = clock.getElapsedTime();
 
       // Pulsing failure core light
-      failurePointLight.intensity = 3.6 + Math.sin(time * 3.2) * 1.0;
+      failurePointLight.intensity = 4.8 + Math.sin(time * 3.5) * 1.4;
 
       // Animate Traffic Flow Particles
       if (showTrafficFlow) {
@@ -1172,7 +1209,7 @@ export const SystemScene3D: React.FC<SystemScene3DProps> = ({
         </div>
       )}
 
-      {/* Top HUD Overlay: Mode Selector, Counts, Controls, and Legend matching Image */}
+      {/* Top HUD Overlay: Mode Selector, Counts, Controls */}
       <div className="scene-hud-top-bar">
         <div className="scene-hud-left">
           {/* Mode Selector */}
@@ -1257,8 +1294,8 @@ export const SystemScene3D: React.FC<SystemScene3DProps> = ({
             className="scene-action-btn"
             onClick={() => {
               if (controlsRef.current && cameraRef.current) {
-                controlsRef.current.target.set(0, 0, 0);
-                cameraRef.current.position.set(0, 36, 48);
+                controlsRef.current.target.set(0, 1.0, 0);
+                cameraRef.current.position.set(0, 22, 28);
                 controlsRef.current.update();
               }
             }}
@@ -1270,7 +1307,7 @@ export const SystemScene3D: React.FC<SystemScene3DProps> = ({
         </div>
       </div>
 
-      {/* Top Legend Bar matching reference directly beneath top HUD row */}
+      {/* Top Legend Bar positioned directly underneath mode buttons on left matching Image 2 */}
       <div className="scene-hud-legend">
         <div className="legend-item">
           <span className="legend-swatch critical" />
@@ -1330,7 +1367,7 @@ export const SystemScene3D: React.FC<SystemScene3DProps> = ({
         </div>
       )}
 
-      {/* Dedicated Service Inspection Drawer (Docked inside 3D Scene) */}
+      {/* Dedicated Service Inspection Drawer */}
       {selectedServiceData && (
         <aside className="scene-inspector-drawer" role="complementary" aria-label="Service Details">
           <div className="inspector-drawer-head">

@@ -548,7 +548,7 @@ export default function App() {
                           selectedNodeFilter={selectedNodeFilter}
                           onSelectNode={handleSelectGraphNode}
                           onOpenInspector={() => setIsInspectorOpen(true)}
-                          height={580}
+                          height={640}
                         />
                       )}
                       {viewMode === 'graph' && (
