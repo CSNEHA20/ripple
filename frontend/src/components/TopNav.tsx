@@ -97,6 +97,11 @@ export const TopNav: React.FC<TopNavProps> = ({
             </>
           )}
         </Button>
+
+        {/* User Avatar */}
+        <div className="w-9 h-9 rounded-full bg-gradient-to-br from-[#ff642d] to-[#ff3b20] grid place-items-center font-bold text-xs text-white shadow-md select-none shrink-0" title="Vishal (vishal@ripple.dev)">
+          V
+        </div>
       </div>
     </header>
   );

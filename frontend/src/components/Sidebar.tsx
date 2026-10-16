@@ -61,14 +61,19 @@ const SYSTEM_NAV: NavEntry[] = [
   { id: 'settings', icon: Settings, label: 'Settings' },
 ];
 
-const RippleMark: React.FC<{ size?: number }> = ({ size = 30 }) => (
-  <svg width={size} height={size} viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
-    <path d="M4 16C4 9.37258 9.37258 4 16 4" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
-    <path d="M8 16C8 11.5817 11.5817 8 16 8" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
-    <path d="M12 16C12 13.7909 13.7909 12 16 12" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
-    <circle cx="16" cy="16" r="2.2" fill="currentColor" />
-    <path d="M16 28C22.6274 28 28 22.6274 28 16" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
-    <path d="M16 24C20.4183 24 24 20.4183 24 16" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
+const RippleMark: React.FC<{ size?: number }> = ({ size = 28 }) => (
+  <svg width={size} height={size} viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <defs>
+      <linearGradient id="sb-logo-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stopColor="#FF642D" />
+        <stop offset="100%" stopColor="#FF3B20" />
+      </linearGradient>
+    </defs>
+    <circle cx="24" cy="24" r="23" fill="url(#sb-logo-grad)" />
+    <path d="M11 16C16 13.5 21 18.5 27 16C31.5 14 34.5 16.5 37 16" stroke="#0E0E0C" strokeWidth="2.8" strokeLinecap="round" />
+    <path d="M8 23C14.5 19 20.5 27 28 23C33.5 20 37 24.5 40 23" stroke="#0E0E0C" strokeWidth="2.8" strokeLinecap="round" />
+    <path d="M9 30C15 26 21 34 29 30C34 27.5 37 31.5 39 30" stroke="#0E0E0C" strokeWidth="2.8" strokeLinecap="round" />
+    <path d="M14 37C19.5 34 25 39.5 31 37C33.5 35.5 35 37 36 37" stroke="#0E0E0C" strokeWidth="2.8" strokeLinecap="round" />
   </svg>
 );
 

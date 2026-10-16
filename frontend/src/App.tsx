@@ -29,7 +29,6 @@ import {
 import { Sidebar, type ViewId } from './components/Sidebar';
 import { TopNav } from './components/TopNav';
 import { ServicesView, IncidentsView, MemoryView, SettingsView, ModuleView } from './components/ExplorerViews';
-import { AlertConsole } from './components/AlertConsole';
 import { AgentTimeline } from './components/AgentTimeline';
 import { GraphCanvas } from './components/GraphCanvas';
 import { HypothesisBoard } from './components/HypothesisBoard';
@@ -41,6 +40,10 @@ import { InspectorDrawer } from './components/InspectorDrawer';
 import { ApprovalGate } from './components/ApprovalGate';
 import { ScenarioDrawer } from './components/ScenarioDrawer';
 import { RippleFooter } from './components/RippleFooter';
+import { IncidentHeader } from './components/IncidentHeader';
+import { SystemScene3D } from './components/SystemScene3D';
+import { IncidentFlowPanel } from './components/IncidentFlowPanel';
+import { TracePanel } from './components/TracePanel';
 
 export default function App() {
   // Theme state: defaults to dark matching Image 2, toggleable to light matching Image 1
@@ -51,6 +54,8 @@ export default function App() {
   const [tenant, setTenant] = useState<string>('storefront');
   const [mode, setMode] = useState<'replay' | 'live'>('replay');
   const [healthOk, setHealthOk] = useState<boolean>(true);
+  const [viewMode, setViewMode] = useState<'3d' | 'graph' | 'list'>('3d');
+  const [activeSubTab, setActiveSubTab] = useState<'system' | 'timeline' | 'hypotheses' | 'evidence' | 'runbook' | 'counterfactuals'>('system');
 
   // Scenarios & Alert Selection
   const [scenarios, setScenarios] = useState<ScenarioItem[]>([]);
@@ -455,100 +460,185 @@ export default function App() {
         {/* Scrollable Workspace Body */}
         <div className="main-scroll-body">
           {activeTab === 'incident' && (
-          <>
-          {/* Incident Investigation Header & Status */}
-          <AlertConsole
-            currentIncidentId={currentIncidentId}
-            scenarios={scenarios}
-            selectedScenarioId={selectedScenarioId}
-            onOpenScenarioDrawer={() => setIsScenarioDrawerOpen(true)}
-            customAlertText={customAlertText}
-            onChangeCustomAlertText={setCustomAlertText}
-            customService={customService}
-            onChangeCustomService={setCustomService}
-            tenant={tenant}
-            onChangeTenant={setTenant}
-            mode={mode}
-            onToggleMode={setMode}
-            isRunning={isRunning}
-            onRunCrew={handleRunCrew}
-            healthOk={healthOk}
-            activePhase={activePhase}
-            elapsedSeconds={elapsedSeconds}
-            hasHypotheses={hypotheses.length > 0}
-          />
+            <div className="flex flex-col gap-5">
+              {/* Incident Header with Breadcrumb, Heartbeat, Title, Metadata & View Controls */}
+              <IncidentHeader
+                incidentId={currentIncidentId}
+                severity="P1"
+                title={customService === 'paymentservice' ? 'Checkout payment authorization failing' : `Incident on ${customService}`}
+                subtitle={customAlertText || 'High HTTP 500 error rate on checkout payment authorize. 4 services impacted.'}
+                startedTime="14:24:17"
+                startedAgo={elapsedSeconds > 0 ? `${elapsedSeconds}s ago` : '12m ago'}
+                status={isRunning ? 'Investigating (Live)' : hypotheses.length > 0 ? 'Root cause identified' : 'Investigating (Live)'}
+                tenant={tenant}
+                onChangeTenant={setTenant}
+                activeSubTab={activeSubTab}
+                onChangeSubTab={(tab) => {
+                  setActiveSubTab(tab);
+                  if (tab === 'counterfactuals') setActiveTab('counterfactual');
+                }}
+                viewMode={viewMode}
+                onChangeViewMode={setViewMode}
+                onShare={() => {
+                  navigator.clipboard?.writeText(window.location.href);
+                  alert('Incident investigation URL copied to clipboard');
+                }}
+              />
 
-          {/* Operational Approval Gate if safe action proposed */}
-          <ApprovalGate
-            pendingActions={pendingActions}
-            incidentId={currentIncidentId}
-            onApprove={handleApproveAction}
-            onReject={handleRejectAction}
-            isProcessing={isProcessingAction}
-          />
-          </>
-          )}
-
-          {/* Tab 1: Incident Investigation Workspace (60% / 40% Split Grid) */}
-          {activeTab === 'incident' && (
-            <div className="workspace-split-grid">
-              {/* Left Column (60%): System Topology + Activity Timeline */}
-              <div className="split-left-col">
-                <GraphCanvas
-                  nodes={graphNodes}
-                  edges={graphEdges}
-                  highlightedNodes={highlightedNodes}
-                  highlightedEdges={highlightedEdges}
-                  alertingService={customService}
-                  selectedNodeFilter={selectedNodeFilter}
-                  asOfNow={asOfNow}
-                  onToggleTimeTravel={() => setAsOfNow(!asOfNow)}
-                  onSelectNode={handleSelectGraphNode}
-                  onStartWhyReplay={handleStartWhyReplay}
-                  isReplaying={isReplaying}
+              {/* Operational Approval Gate if safe action proposed */}
+              {pendingActions.length > 0 && (
+                <ApprovalGate
+                  pendingActions={pendingActions}
+                  incidentId={currentIncidentId}
+                  onApprove={handleApproveAction}
+                  onReject={handleRejectAction}
+                  isProcessing={isProcessingAction}
                 />
+              )}
 
-                <AgentTimeline
-                  events={events}
-                  activePhase={activePhase}
-                  selectedNodeFilter={selectedNodeFilter}
-                  onClearNodeFilter={() => {
-                    setSelectedNodeFilter(null);
-                    setHighlightedNodes(new Set());
-                  }}
-                />
-              </div>
+              {/* Specific SubTab: Runbook */}
+              {activeSubTab === 'runbook' && (
+                <div className="workspace-split-grid">
+                  <div className="split-left-col">
+                    <MemoryPanel
+                      memoryData={memoryData}
+                      hasHypotheses={hypotheses.length > 0}
+                      onExecuteRunbook={() => {
+                        if (pendingActions.length > 0) {
+                          handleApproveAction(pendingActions[0].id);
+                        } else {
+                          handleRunCrew();
+                        }
+                      }}
+                      isExecuting={isProcessingAction}
+                    />
+                  </div>
+                  <div className="split-right-col">
+                    <HypothesisBoard
+                      hypotheses={hypotheses}
+                      selectedHypothesisId={selectedHypothesisId}
+                      onSelectHypothesis={(id) => {
+                        setSelectedHypothesisId(id);
+                        const h = hypotheses.find((x) => x.id === id);
+                        if (h?.service) {
+                          setHighlightedNodes(new Set([h.service]));
+                          setSelectedNodeFilter(h.service);
+                        }
+                      }}
+                      pendingEvidenceRequest={pendingEvidenceRequest}
+                      onInspectEvidence={handleInspectEvidence}
+                    />
+                  </div>
+                </div>
+              )}
 
-              {/* Right Column (40%): Ranked Hypotheses + Memory & Runbook */}
-              <div className="split-right-col">
-                <HypothesisBoard
-                  hypotheses={hypotheses}
-                  selectedHypothesisId={selectedHypothesisId}
-                  onSelectHypothesis={(id) => {
-                    setSelectedHypothesisId(id);
-                    const h = hypotheses.find((x) => x.id === id);
-                    if (h?.service) {
-                      setHighlightedNodes(new Set([h.service]));
-                      setSelectedNodeFilter(h.service);
-                    }
-                  }}
-                  pendingEvidenceRequest={pendingEvidenceRequest}
-                  onInspectEvidence={handleInspectEvidence}
-                />
+              {/* Default Main Cinematic Layout (System View & Diagnostics) */}
+              {activeSubTab !== 'runbook' && (
+                <>
+                  {/* Center Row: Interactive 3D System View (or 2D Fallback) + Incident Flow Panel */}
+                  <div className="incident-dashboard-center-grid">
+                    <div className="min-w-0">
+                      {viewMode === '3d' && (
+                        <SystemScene3D
+                          nodes={graphNodes}
+                          edges={graphEdges}
+                          highlightedNodes={highlightedNodes}
+                          highlightedEdges={highlightedEdges}
+                          alertingService={customService}
+                          selectedNodeFilter={selectedNodeFilter}
+                          onSelectNode={handleSelectGraphNode}
+                          height={580}
+                        />
+                      )}
+                      {viewMode === 'graph' && (
+                        <GraphCanvas
+                          nodes={graphNodes}
+                          edges={graphEdges}
+                          highlightedNodes={highlightedNodes}
+                          highlightedEdges={highlightedEdges}
+                          alertingService={customService}
+                          selectedNodeFilter={selectedNodeFilter}
+                          asOfNow={asOfNow}
+                          onToggleTimeTravel={() => setAsOfNow(!asOfNow)}
+                          onSelectNode={handleSelectGraphNode}
+                          onStartWhyReplay={handleStartWhyReplay}
+                          isReplaying={isReplaying}
+                          height={580}
+                        />
+                      )}
+                      {viewMode === 'list' && (
+                        <ServicesView
+                          nodes={graphNodes}
+                          edges={graphEdges}
+                          alertingService={customService}
+                          onOpen={(n) => {
+                            handleSelectGraphNode(n);
+                            setIsInspectorOpen(true);
+                          }}
+                        />
+                      )}
+                    </div>
 
-                <MemoryPanel
-                  memoryData={memoryData}
-                  hasHypotheses={hypotheses.length > 0}
-                  onExecuteRunbook={() => {
-                    if (pendingActions.length > 0) {
-                      handleApproveAction(pendingActions[0].id);
-                    } else {
-                      handleRunCrew();
-                    }
-                  }}
-                  isExecuting={isProcessingAction}
-                />
-              </div>
+                    <div className="min-w-0">
+                      <IncidentFlowPanel
+                        alertingService={customService}
+                        onFocusService={(svc) => {
+                          setHighlightedNodes(new Set([svc]));
+                          setSelectedNodeFilter(svc);
+                        }}
+                        onOpenBlastRadiusDrawer={() => setIsScenarioDrawerOpen(true)}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Bottom Multi-Panel Diagnostic Row: Agent Activity Timeline | Current Trace | Top Hypotheses */}
+                  <div className="incident-dashboard-bottom-grid">
+                    {/* Column 1: Agent Activity Timeline */}
+                    <div className="min-w-0">
+                      <AgentTimeline
+                        events={events}
+                        activePhase={activePhase}
+                        selectedNodeFilter={selectedNodeFilter}
+                        onClearNodeFilter={() => {
+                          setSelectedNodeFilter(null);
+                          setHighlightedNodes(new Set());
+                        }}
+                      />
+                    </div>
+
+                    {/* Column 2: Current Trace Panel */}
+                    <div className="min-w-0">
+                      <TracePanel
+                        traceId="9f3c...a2d1"
+                        onOpenFullTrace={() => setIsInspectorOpen(true)}
+                        onSelectService={(svc) => {
+                          setHighlightedNodes(new Set([svc]));
+                          setSelectedNodeFilter(svc);
+                        }}
+                        selectedService={selectedNodeFilter}
+                      />
+                    </div>
+
+                    {/* Column 3: Top Hypotheses */}
+                    <div className="min-w-0">
+                      <HypothesisBoard
+                        hypotheses={hypotheses}
+                        selectedHypothesisId={selectedHypothesisId}
+                        onSelectHypothesis={(id) => {
+                          setSelectedHypothesisId(id);
+                          const h = hypotheses.find((x) => x.id === id);
+                          if (h?.service) {
+                            setHighlightedNodes(new Set([h.service]));
+                            setSelectedNodeFilter(h.service);
+                          }
+                        }}
+                        pendingEvidenceRequest={pendingEvidenceRequest}
+                        onInspectEvidence={handleInspectEvidence}
+                      />
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
           )}
 

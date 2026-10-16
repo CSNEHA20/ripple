@@ -1,0 +1,217 @@
+/* ==========================================================================
+   Incident Flow Panel Styles
+   ========================================================================== */
+
+.incident-flow-panel-root {
+  background: #171714;
+  border: 1px solid #2a2925;
+  border-radius: 18px;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  height: 100%;
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.6);
+}
+
+.incident-flow-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(245, 241, 232, 0.08);
+}
+
+.incident-flow-title {
+  font-size: 14.5px;
+  font-weight: 700;
+  color: #f5f1e8;
+  letter-spacing: -0.01em;
+  margin: 0;
+}
+
+.incident-flow-badge {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 800;
+  color: #ff453a;
+  background: rgba(255, 69, 58, 0.16);
+  border: 1px solid rgba(255, 69, 58, 0.4);
+  padding: 2px 7px;
+  border-radius: 5px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* Downward Tree */
+.incident-flow-tree {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.flow-tree-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.18s ease;
+  background: transparent;
+}
+
+.flow-tree-item:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.flow-tree-indicator {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.flow-tree-indicator.red {
+  background: rgba(255, 69, 58, 0.25);
+  border: 1.5px solid #ff453a;
+  box-shadow: 0 0 10px rgba(255, 69, 58, 0.6);
+}
+
+.flow-tree-indicator.amber {
+  background: rgba(245, 166, 35, 0.25);
+  border: 1.5px solid #f5a623;
+  box-shadow: 0 0 8px rgba(245, 166, 35, 0.5);
+}
+
+.flow-tree-indicator.hollow {
+  border: 1.5px dashed #706e67;
+  background: transparent;
+}
+
+.flow-dot-inner {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+
+.flow-tree-indicator.red .flow-dot-inner {
+  background: #ff453a;
+}
+
+.flow-tree-indicator.amber .flow-dot-inner {
+  background: #f5a623;
+}
+
+.flow-tree-content {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.flow-service-name {
+  font-size: 13.5px;
+  font-weight: 700;
+  color: #f5f1e8;
+  letter-spacing: -0.01em;
+}
+
+.flow-service-sub {
+  font-size: 11px;
+  color: #a6a197;
+  font-family: var(--font-mono);
+}
+
+.flow-tree-connector {
+  width: 2px;
+  height: 14px;
+  margin-left: 16px;
+}
+
+.flow-tree-connector.red-amber {
+  background: linear-gradient(to bottom, #ff453a, #f5a623);
+}
+
+.flow-tree-connector.amber {
+  background: #f5a623;
+}
+
+.flow-tree-connector.muted {
+  background: repeating-linear-gradient(to bottom, #706e67, #706e67 2px, transparent 2px, transparent 4px);
+}
+
+/* Isometric Mini-Card */
+.flow-isometric-card {
+  width: 100%;
+  background: #11110f;
+  border: 1px solid #2a2925;
+  border-radius: 12px;
+  padding: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.flow-isometric-svg {
+  width: 100%;
+  height: auto;
+  max-height: 120px;
+  display: block;
+}
+
+/* Expand Button */
+.flow-expand-btn {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: #141412;
+  border: 1px solid #2a2925;
+  color: #a6a197;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.flow-expand-btn:hover {
+  background: #1c1c18;
+  color: #f5f1e8;
+  border-color: #383630;
+}
+
+.flow-caret {
+  transition: transform 0.2s ease;
+}
+
+.flow-caret.rotate {
+  transform: rotate(180deg);
+}
+
+.flow-expanded-details {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: #11110f;
+  border: 1px solid #2a2925;
+  border-radius: 8px;
+  padding: 10px;
+  font-size: 11.5px;
+  color: #a6a197;
+}
+
+.flow-detail-stat {
+  display: flex;
+  justify-content: space-between;
+}
+
+.flow-detail-stat strong {
+  color: #f5f1e8;
+  font-family: var(--font-mono);
+}

@@ -51,3 +51,40 @@
   gap: 20px;
   min-width: 0;
 }
+
+/* ==========================================================================
+   Ripple Cinematic Incident Intelligence Dashboard Layout (Matching Reference)
+   ========================================================================== */
+
+.incident-dashboard-center-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 280px;
+  gap: 18px;
+  align-items: stretch;
+}
+
+@media (max-width: 1200px) {
+  .incident-dashboard-center-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.incident-dashboard-bottom-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr) minmax(0, 1fr);
+  gap: 18px;
+  align-items: stretch;
+}
+
+@media (max-width: 1320px) {
+  .incident-dashboard-bottom-grid {
+    grid-template-columns: 1.2fr 1fr;
+  }
+}
+
+@media (max-width: 960px) {
+  .incident-dashboard-bottom-grid {
+    grid-template-columns: 1fr;
+  }
+}
+

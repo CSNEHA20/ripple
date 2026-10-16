@@ -1,6 +1,6 @@
 {
   "benchmark_protocol_version": "v2.0",
-  "timestamp": 1792164939.281595,
+  "timestamp": 1792166308.6399903,
   "total_scenarios_evaluated": 2,
   "calibration_status": {
     "passed": true,
@@ -14,7 +14,7 @@
       "recommendation_correctness": 0.5,
       "unsafe_recommendation_rate": 0.0,
       "avg_tool_calls": 37.0,
-      "avg_duration_seconds": 0.33
+      "avg_duration_seconds": 0.37
     },
     "memory_off": {
       "total_scenarios": 2,
@@ -22,7 +22,7 @@
       "recommendation_correctness": 0.5,
       "unsafe_recommendation_rate": 0.0,
       "avg_tool_calls": 33.0,
-      "avg_duration_seconds": 0.23
+      "avg_duration_seconds": 0.3
     }
   },
   "runs": [
@@ -38,7 +38,7 @@
       "ground_truth_runbook": "rb_rollback",
       "is_unsafe_recommendation": false,
       "tool_calls": 37,
-      "duration_seconds": 0.332,
+      "duration_seconds": 0.391,
       "evidence_score": 11.9,
       "notes": ""
     },
@@ -54,7 +54,7 @@
       "ground_truth_runbook": "rb_rollback",
       "is_unsafe_recommendation": false,
       "tool_calls": 33,
-      "duration_seconds": 0.257,
+      "duration_seconds": 0.371,
       "evidence_score": 13.91,
       "notes": ""
     },
@@ -70,7 +70,7 @@
       "ground_truth_runbook": "rb_restart",
       "is_unsafe_recommendation": false,
       "tool_calls": 37,
-      "duration_seconds": 0.336,
+      "duration_seconds": 0.343,
       "evidence_score": 1.57,
       "notes": "Memory must NOT recommend rb_cache_flush because the assumed dependency was closed."
     },
@@ -86,7 +86,7 @@
       "ground_truth_runbook": "rb_restart",
       "is_unsafe_recommendation": false,
       "tool_calls": 33,
-      "duration_seconds": 0.212,
+      "duration_seconds": 0.229,
       "evidence_score": 1.57,
       "notes": "Memory must NOT recommend rb_cache_flush because the assumed dependency was closed."
     }
