@@ -1,6 +1,6 @@
 import logging
 from contextlib import asynccontextmanager
-from typing import Annotated
+from typing import Annotated, Any
 from fastapi import FastAPI, Header, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
@@ -294,4 +294,46 @@ def api_seed_historical(
     except Exception as e:
         logger.error(f"Failed to seed historical incidents: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to seed historical incidents: {str(e)}")
+
+
+# ============================================================================
+# M4: Graph Tools & Execution Endpoints
+# ============================================================================
+
+from app.tools.registry import get_tool_schemas, execute_tool
+
+
+class ToolExecuteRequest(BaseModel):
+    arguments: dict[str, Any] = {}
+
+
+@app.get("/tools")
+@app.get("/api/tools")
+def api_list_tools():
+    """List all available M4 graph tools and their JSON schemas."""
+    schemas = get_tool_schemas()
+    return {
+        "count": len(schemas),
+        "tools": schemas,
+    }
+
+
+@app.post("/tools/{tool_name}/execute")
+@app.post("/api/tools/{tool_name}/execute")
+def api_execute_tool(
+    tool_name: str,
+    req: ToolExecuteRequest | None = None,
+    graph: TenantGraph = Depends(get_current_tenant),
+):
+    """Execute a graph tool against the tenant graph and return data plus provenance trace."""
+    args = req.arguments if req else {}
+    try:
+        result = execute_tool(name=tool_name, graph=graph, arguments=args)
+        return result.to_dict()
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logger.error(f"Error executing tool '{tool_name}': {e}")
+        raise HTTPException(status_code=500, detail=f"Tool execution failed: {str(e)}")
+
 
