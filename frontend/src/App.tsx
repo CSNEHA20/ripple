@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import './App.css';
 import {
   checkHealth,
@@ -45,7 +46,39 @@ import { SystemScene3D } from './components/SystemScene3D';
 import { IncidentFlowPanel } from './components/IncidentFlowPanel';
 import { TracePanel } from './components/TracePanel';
 
+const PATH_TO_VIEW_MAP: Record<string, ViewId> = {
+  '': 'incident',
+  'investigation': 'incident',
+  'counterfactual': 'counterfactual',
+  'benchmark': 'benchmark',
+  'services': 'services',
+  'incidents': 'incidents',
+  'memory': 'memory',
+  'runbooks': 'runbooks',
+  'people': 'people',
+  'docs': 'docs',
+  'settings': 'settings',
+};
+
+const VIEW_TO_PATH_MAP: Record<ViewId, string> = {
+  incident: '/',
+  counterfactual: '/counterfactual',
+  benchmark: '/benchmark',
+  services: '/services',
+  incidents: '/incidents',
+  memory: '/memory',
+  runbooks: '/runbooks',
+  people: '/people',
+  docs: '/docs',
+  settings: '/settings',
+};
+
 export default function App() {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [copiedToast, setCopiedToast] = useState(false);
+
   // Theme state: defaults to dark matching Image 2, toggleable to light matching Image 1
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
 
@@ -103,6 +136,88 @@ export default function App() {
   // Benchmark State
   const [benchmarkReport, setBenchmarkReport] = useState<BenchmarkReportResponse | null>(null);
   const [isBenchRunning, setIsBenchRunning] = useState<boolean>(false);
+
+  // Sync route on mount & location changes
+  useEffect(() => {
+    const rawPath = location.pathname.replace(/^\/+|\/+$/g, '').toLowerCase();
+
+    if (rawPath.startsWith('incidents/')) {
+      const parts = rawPath.split('/');
+      if (parts[1]) {
+        setCurrentIncidentId(parts[1].toUpperCase());
+      }
+      setActiveTab('incident');
+    } else {
+      const targetView = PATH_TO_VIEW_MAP[rawPath] || 'incident';
+      setActiveTab(targetView);
+    }
+  }, [location.pathname]);
+
+  // Sync search params with tabs, views, and filters
+  useEffect(() => {
+    const tabParam = searchParams.get('tab');
+    if (
+      tabParam &&
+      ['system', 'timeline', 'hypotheses', 'evidence', 'runbook', 'counterfactuals'].includes(tabParam)
+    ) {
+      setActiveSubTab(tabParam as any);
+    }
+
+    const viewParam = searchParams.get('view');
+    if (viewParam && ['3d', 'graph', 'list'].includes(viewParam)) {
+      setViewMode(viewParam as any);
+    }
+
+    const tenantParam = searchParams.get('tenant');
+    if (tenantParam) {
+      setTenant(tenantParam);
+    }
+
+    const svcParam = searchParams.get('service');
+    if (svcParam) {
+      setSelectedNodeFilter(svcParam);
+      setHighlightedNodes(new Set([svcParam]));
+    }
+  }, [searchParams]);
+
+  // Navigation Handlers
+  const handleSelectTab = (tab: ViewId) => {
+    const targetPath = VIEW_TO_PATH_MAP[tab] || '/';
+    navigate({
+      pathname: targetPath,
+      search: searchParams.toString(),
+    });
+  };
+
+  const handleChangeSubTab = (subTab: typeof activeSubTab) => {
+    setActiveSubTab(subTab);
+    const nextParams = new URLSearchParams(searchParams);
+    if (subTab === 'system') {
+      nextParams.delete('tab');
+    } else {
+      nextParams.set('tab', subTab);
+    }
+    setSearchParams(nextParams, { replace: true });
+  };
+
+  const handleChangeViewMode = (mode: '3d' | 'graph' | 'list') => {
+    setViewMode(mode);
+    const nextParams = new URLSearchParams(searchParams);
+    if (mode === '3d') {
+      nextParams.delete('view');
+    } else {
+      nextParams.set('view', mode);
+    }
+    setSearchParams(nextParams, { replace: true });
+  };
+
+  const handleShareUrl = () => {
+    const url = window.location.href;
+    navigator.clipboard.writeText(url).then(() => {
+      setCopiedToast(true);
+      setTimeout(() => setCopiedToast(false), 3000);
+    });
+  };
 
   // Sync theme class on document element
   useEffect(() => {
@@ -435,10 +550,15 @@ export default function App() {
       {/* 1. Left Sidebar Navigation */}
       <Sidebar
         activeTab={activeTab}
-        onChangeTab={setActiveTab}
+        onChangeTab={handleSelectTab}
         onOpenAskBrain={() => setIsAskDrawerOpen(true)}
         tenant={tenant}
-        onChangeTenant={setTenant}
+        onChangeTenant={(t) => {
+          setTenant(t);
+          const nextParams = new URLSearchParams(searchParams);
+          nextParams.set('tenant', t);
+          setSearchParams(nextParams, { replace: true });
+        }}
         healthOk={healthOk}
       />
 
@@ -471,18 +591,20 @@ export default function App() {
                 startedAgo={elapsedSeconds > 0 ? `${elapsedSeconds}s ago` : '12m ago'}
                 status={isRunning ? 'Investigating (Live)' : hypotheses.length > 0 ? 'Root cause identified' : 'Investigating (Live)'}
                 tenant={tenant}
-                onChangeTenant={setTenant}
+                onChangeTenant={(t) => {
+                  setTenant(t);
+                  const nextParams = new URLSearchParams(searchParams);
+                  nextParams.set('tenant', t);
+                  setSearchParams(nextParams, { replace: true });
+                }}
                 activeSubTab={activeSubTab}
                 onChangeSubTab={(tab) => {
-                  setActiveSubTab(tab);
-                  if (tab === 'counterfactuals') setActiveTab('counterfactual');
+                  handleChangeSubTab(tab);
+                  if (tab === 'counterfactuals') handleSelectTab('counterfactual');
                 }}
                 viewMode={viewMode}
-                onChangeViewMode={setViewMode}
-                onShare={() => {
-                  navigator.clipboard?.writeText(window.location.href);
-                  alert('Incident investigation URL copied to clipboard');
-                }}
+                onChangeViewMode={handleChangeViewMode}
+                onShare={handleShareUrl}
               />
 
               {/* Operational Approval Gate if safe action proposed */}
@@ -705,12 +827,12 @@ export default function App() {
               selectedScenarioId={selectedScenarioId}
               onLoad={(id) => {
                 handleSelectScenario(id);
-                setActiveTab('incident');
+                handleSelectTab('incident');
               }}
             />
           )}
 
-          {activeTab === 'memory' && <MemoryView memoryData={memoryData} onGo={() => setActiveTab('incident')} />}
+          {activeTab === 'memory' && <MemoryView memoryData={memoryData} onGo={() => handleSelectTab('incident')} />}
 
           {activeTab === 'settings' && (
             <SettingsView
@@ -731,7 +853,7 @@ export default function App() {
         {/* Premium Animated Dark SaaS Footer with Giant Wordmark */}
         <RippleFooter
           activeTab={activeTab}
-          onChangeTab={setActiveTab}
+          onChangeTab={handleSelectTab}
           onOpenAskBrain={() => setIsAskDrawerOpen(true)}
           healthOk={healthOk}
         />
@@ -766,6 +888,18 @@ export default function App() {
         selectedEvidence={selectedEvidence}
         selectedNode={selectedGraphNode}
       />
+
+      {/* Deep-link URL Copied Toast */}
+      {copiedToast && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="fixed bottom-6 right-6 z-50 flex items-center gap-2.5 px-4 py-2.5 rounded-xl bg-[#171714] border border-[#FF642D] text-[#F5F1E8] shadow-[0_12px_32px_rgba(0,0,0,0.85)] text-[13px] font-medium animate-in fade-in slide-in-from-bottom-2"
+        >
+          <span className="w-2.5 h-2.5 rounded-full bg-[#35C98A] shadow-[0_0_8px_#35C98A]" />
+          <span>Incident investigation link copied to clipboard!</span>
+        </div>
+      )}
     </div>
   );
 }

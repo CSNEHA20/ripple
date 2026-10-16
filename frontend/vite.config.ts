@@ -3,6 +3,12 @@ import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { defineConfig } from 'vite'
 
+const htmlBypass = (req: any) => {
+  if (req.headers.accept && req.headers.accept.includes('text/html')) {
+    return '/index.html'
+  }
+}
+
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react(), tailwindcss()],
@@ -30,14 +36,17 @@ export default defineConfig({
       '/scenarios': {
         target: process.env.VITE_BACKEND_URL || 'http://localhost:8000',
         changeOrigin: true,
+        bypass: htmlBypass,
       },
       '/incidents': {
         target: process.env.VITE_BACKEND_URL || 'http://localhost:8000',
         changeOrigin: true,
+        bypass: htmlBypass,
       },
       '/counterfactual': {
         target: process.env.VITE_BACKEND_URL || 'http://localhost:8000',
         changeOrigin: true,
+        bypass: htmlBypass,
       },
       '/ask': {
         target: process.env.VITE_BACKEND_URL || 'http://localhost:8000',
@@ -50,10 +59,12 @@ export default defineConfig({
       '/memory': {
         target: process.env.VITE_BACKEND_URL || 'http://localhost:8000',
         changeOrigin: true,
+        bypass: htmlBypass,
       },
       '/benchmark': {
         target: process.env.VITE_BACKEND_URL || 'http://localhost:8000',
         changeOrigin: true,
+        bypass: htmlBypass,
       },
       '/inspect': {
         target: process.env.VITE_BACKEND_URL || 'http://localhost:8000',
