@@ -1,5 +1,8 @@
 import React from 'react';
 import { AlertTriangle, Play, RefreshCw, Cpu, Database, CheckCircle2 } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
 import type { ScenarioItem } from '../api';
 
 interface AlertConsoleProps {
@@ -42,11 +45,11 @@ export const AlertConsole: React.FC<AlertConsoleProps> = ({
       {/* Top Bar: Tenant & Engine Mode */}
       <div className="console-header">
         <div className="console-title-group">
-          <div className="brand-badge">
-            <span className="brand-dot"></span>
+          <Badge variant="outline" className="border-emerald-500/30 text-emerald-400 gap-1.5 py-1 px-3">
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
             RIPPLE ON-CALL
-          </div>
-          <span className="tenant-tag">Graph Tenant:</span>
+          </Badge>
+          <span className="tenant-tag text-xs text-muted-foreground">Graph Tenant:</span>
           <select
             className="tenant-select"
             value={tenant}
@@ -58,7 +61,7 @@ export const AlertConsole: React.FC<AlertConsoleProps> = ({
           </select>
         </div>
 
-        <div className="console-controls">
+        <div className="console-controls flex items-center gap-3">
           <div className="mode-toggle">
             <button
               className={`mode-btn ${mode === 'replay' ? 'active' : ''}`}
@@ -74,10 +77,10 @@ export const AlertConsole: React.FC<AlertConsoleProps> = ({
             </button>
           </div>
 
-          <div className={`connection-status ${healthOk ? 'ok' : 'err'}`}>
+          <Badge variant={healthOk ? "outline" : "destructive"} className="gap-1.5 text-xs">
             <Database size={13} />
             <span>{healthOk ? 'FalkorDB Connected' : 'Connecting...'}</span>
-          </div>
+          </Badge>
         </div>
       </div>
 
@@ -99,44 +102,47 @@ export const AlertConsole: React.FC<AlertConsoleProps> = ({
           </select>
 
           {selectedScenario && (
-            <div className="scenario-meta-banner">
-              <span className="family-pill">{selectedScenario.family}</span>
-              <span className="meta-text">{selectedScenario.description}</span>
+            <div className="scenario-meta-banner flex items-center gap-2 mt-2">
+              <Badge variant="secondary" className="uppercase font-bold tracking-wider text-[10px]">
+                {selectedScenario.family}
+              </Badge>
+              <span className="meta-text text-xs text-secondary-foreground">{selectedScenario.description}</span>
             </div>
           )}
         </div>
 
-        <div className="alert-inputs-row">
-          <div className="service-field">
+        <div className="alert-inputs-row flex gap-3 mt-3 items-end">
+          <div className="service-field w-1/4">
             <label className="section-label">Alerting Service</label>
-            <input
+            <Input
               type="text"
-              className="console-input"
               placeholder="e.g. paymentservice"
               value={customService}
               onChange={(e) => onChangeCustomService(e.target.value)}
+              className="bg-[rgba(13,30,21,0.6)] border-white/10"
             />
           </div>
 
-          <div className="alert-text-field">
+          <div className="alert-text-field flex-1">
             <label className="section-label">Alert Description / Symptoms</label>
-            <input
+            <Input
               type="text"
-              className="console-input"
               placeholder="e.g. High HTTP 500 error rate on checkout payment authorize..."
               value={customAlertText}
               onChange={(e) => onChangeCustomAlertText(e.target.value)}
+              className="bg-[rgba(13,30,21,0.6)] border-white/10"
             />
           </div>
 
-          <button
-            className={`run-crew-btn ${isRunning ? 'running' : ''}`}
+          <Button
+            size="lg"
+            className="sonic-btn-primary h-9 px-6 rounded-full font-bold cursor-pointer transition-all hover:scale-105"
             onClick={onRunCrew}
             disabled={isRunning || (!customService && !selectedScenarioId)}
           >
             {isRunning ? (
               <>
-                <RefreshCw size={16} className="spin" />
+                <RefreshCw size={16} className="animate-spin" />
                 <span>Crew Investigating...</span>
               </>
             ) : (
@@ -145,7 +151,7 @@ export const AlertConsole: React.FC<AlertConsoleProps> = ({
                 <span>Launch Crew</span>
               </>
             )}
-          </button>
+          </Button>
         </div>
       </div>
     </div>

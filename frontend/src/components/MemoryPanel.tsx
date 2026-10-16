@@ -10,6 +10,7 @@ import {
   ShieldCheck,
   Ban,
 } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
 import type { MemoryRecallData } from '../api';
 
 interface MemoryPanelProps {
@@ -26,32 +27,34 @@ export const MemoryPanel: React.FC<MemoryPanelProps> = ({ memoryData, onSelectRu
   return (
     <div className="memory-panel glass-panel">
       <div className="panel-header">
-        <div className="panel-title-with-badge">
-          <Brain size={16} className="text-cyan" />
+        <div className="panel-title-with-badge flex items-center gap-2">
+          <Brain size={16} className="text-cyan-400" />
           <h3>Graph Memory Layer</h3>
         </div>
-        <span className="tenant-tag">Track 2 · Episodic, Procedural, Outcome</span>
+        <Badge variant="outline" className="text-xs text-muted-foreground border-white/10">
+          Track 2 · Episodic, Procedural, Outcome
+        </Badge>
       </div>
 
       <div className="memory-content-grid">
         {/* Recommended Runbook Card */}
         {recommended && (
           <div className="recommended-runbook-card">
-            <div className="rec-header">
-              <div className="rec-badge">
+            <div className="rec-header flex justify-between items-center">
+              <div className="rec-badge flex items-center gap-1.5 font-bold">
                 <ShieldCheck size={14} />
                 <span>Recommended Runbook</span>
               </div>
-              <span className="success-rate-pill">
-                {((recommended.historical_success_rate || 0.8) * 100).toFixed(0)}% Observed Success Rate
-              </span>
+              <Badge variant="secondary" className="bg-[#08130c]/15 text-[#08130c] font-bold text-xs">
+                {((recommended.historical_success_rate || 0.8) * 100).toFixed(0)}% Observed Success
+              </Badge>
             </div>
-            <h4 className="rec-title">{recommended.title}</h4>
-            <p className="rec-id">ID: <code>{recommended.id}</code></p>
+            <h4 className="rec-title font-extrabold text-base mt-2">{recommended.title}</h4>
+            <p className="rec-id text-xs text-[#233428] mt-1">ID: <code className="font-mono bg-black/10 px-1 py-0.5 rounded">{recommended.id}</code></p>
             {recommended.applicable && (
-              <div className="applicability-pass">
-                <CheckCircle2 size={13} className="text-emerald" />
-                <span>Applicability verified: all assumed dependencies exist in current graph.</span>
+              <div className="applicability-pass flex items-center gap-1.5 text-emerald-800 text-xs font-semibold mt-2">
+                <CheckCircle2 size={13} className="text-emerald-700" />
+                <span>Applicability verified: all dependencies exist in current graph.</span>
               </div>
             )}
           </div>

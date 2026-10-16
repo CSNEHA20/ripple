@@ -9,6 +9,8 @@ import {
   ChevronRight,
   Sparkles,
 } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 import type { HypothesisItem, HypothesisEvidence } from '../api';
 
 interface HypothesisBoardProps {
@@ -32,32 +34,31 @@ export const HypothesisBoard: React.FC<HypothesisBoardProps> = ({
   return (
     <div className="hypothesis-board glass-panel">
       <div className="board-header">
-        <div className="board-title-group">
+        <div className="board-title-group flex items-center gap-2">
           <h3>Ranked Hypotheses &amp; Evidence Engine</h3>
-          <span className="calibrated-label">Track 1 Core · Exponential Decay Scored</span>
+          <Badge variant="outline" className="border-emerald-500/20 text-emerald-400 text-[10px]">
+            Track 1 Core · Exponential Decay
+          </Badge>
         </div>
         {hypotheses.length > 1 && (
-          <div className="margin-indicator">
-            <span className="margin-title">Score Margin:</span>
-            <span className="margin-value">
+          <div className="margin-indicator flex items-center gap-1.5">
+            <span className="margin-title text-xs text-muted-foreground">Score Margin:</span>
+            <Badge variant="secondary" className="font-mono font-bold text-xs text-emerald-400">
               +{(hypotheses[0].evidence_score - hypotheses[1].evidence_score).toFixed(2)}
-            </span>
+            </Badge>
           </div>
         )}
       </div>
 
-      {/* Insufficient Evidence Warning Banner */}
+      {/* Insufficient Evidence Warning Banner using shadcn Alert */}
       {isInsufficient && (
-        <div className="insufficient-evidence-banner">
-          <AlertCircle size={16} className="text-amber" />
-          <div className="banner-text">
-            <strong>Insufficient Evidence for Conclusive Diagnosis</strong>
-            <p>
-              Top hypothesis has fewer than 2 supporting items. Agent created an evidence request task to gather
-              clarifying signals.
-            </p>
-          </div>
-        </div>
+        <Alert variant="destructive" className="bg-amber-950/20 border-amber-500/30 text-amber-200">
+          <AlertCircle className="h-4 w-4 text-amber-400" />
+          <AlertTitle className="text-xs font-bold text-amber-300">Insufficient Evidence for Conclusive Diagnosis</AlertTitle>
+          <AlertDescription className="text-xs text-amber-200/80">
+            Top hypothesis has fewer than 2 supporting items. Agent created an evidence request task to gather clarifying signals.
+          </AlertDescription>
+        </Alert>
       )}
 
       {/* Pending Evidence Request Card */}
@@ -95,7 +96,9 @@ export const HypothesisBoard: React.FC<HypothesisBoardProps> = ({
                   <div className="hyp-rank-badge">{String(index + 1).padStart(2, '0')}</div>
                   <div className="hyp-title-group">
                     <span className="hyp-service">{hyp.service}</span>
-                    <span className="badge-inferred">INFERRED</span>
+                    <Badge variant="outline" className="border-emerald-500/30 text-emerald-300 text-[10px] uppercase font-bold tracking-wider">
+                      INFERRED
+                    </Badge>
                   </div>
                   <div className="hyp-score-box">
                     <span className="score-num">{hyp.evidence_score.toFixed(2)}</span>

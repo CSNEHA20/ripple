@@ -9,6 +9,9 @@ import {
   Sparkles,
   Layers,
 } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 import type { CounterfactualResponse } from '../api';
 
 interface CounterfactualPanelProps {
@@ -39,15 +42,17 @@ export const CounterfactualPanel: React.FC<CounterfactualPanelProps> = ({
   return (
     <div className="counterfactual-panel glass-panel">
       <div className="panel-header">
-        <div className="panel-title-with-badge">
-          <GitCompare size={16} className="text-purple" />
+        <div className="panel-title-with-badge flex items-center gap-2">
+          <GitCompare size={16} className="text-purple-400" />
           <h3>Counterfactual Simulator (What-If)</h3>
         </div>
-        <span className="tenant-tag">M9 Multi-Hop Reliability Engine</span>
+        <Badge variant="outline" className="text-xs text-muted-foreground border-white/10">
+          M9 Multi-Hop Reliability Engine
+        </Badge>
       </div>
 
-      <div className="cf-control-row">
-        <div className="cf-input-group">
+      <div className="cf-control-row flex items-end gap-3 mt-2">
+        <div className="cf-input-group flex-1">
           <label className="section-label">Hypothetical Service to Fail Instead:</label>
           <select
             className="cf-select"
@@ -62,14 +67,14 @@ export const CounterfactualPanel: React.FC<CounterfactualPanelProps> = ({
           </select>
         </div>
 
-        <button
-          className="run-cf-btn"
+        <Button
+          className="sonic-btn-primary h-9 px-5 rounded-full font-bold cursor-pointer"
           onClick={handleRun}
           disabled={isLoading || !currentIncidentId}
         >
           <Play size={14} fill="currentColor" />
           <span>{isLoading ? 'Computing Diff...' : 'Run What-If Diff'}</span>
-        </button>
+        </Button>
       </div>
 
       {counterfactualResult && (

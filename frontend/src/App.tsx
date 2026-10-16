@@ -10,6 +10,8 @@ import {
   MessageSquare,
   Zap,
 } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import {
   checkHealth,
   getScenarios,
@@ -362,13 +364,15 @@ export default function App() {
         </nav>
 
         <div className="nav-actions">
-          <button
-            className="ask-brain-btn"
+          <Button
+            variant="outline"
+            size="sm"
+            className="rounded-full gap-2 border-white/20 bg-transparent hover:bg-white/10 text-white cursor-pointer"
             onClick={() => setIsAskDrawerOpen(true)}
           >
             <MessageSquare size={14} />
             <span>Ask Company Brain</span>
-          </button>
+          </Button>
         </div>
       </header>
 
@@ -391,19 +395,22 @@ export default function App() {
                 outages effortlessly.
               </p>
               <div className="sonic-hero-cta-row">
-                <button
-                  className="sonic-btn-primary"
+                <Button
+                  size="default"
+                  className="sonic-btn-primary rounded-full cursor-pointer hover:scale-105 transition-all"
                   onClick={handleRunCrew}
                   disabled={isRunning}
                 >
                   {isRunning ? 'Investigating...' : 'Start Crew Run'}
-                </button>
-                <button
-                  className="sonic-btn-secondary"
+                </Button>
+                <Button
+                  variant="outline"
+                  size="default"
+                  className="sonic-btn-secondary rounded-full cursor-pointer hover:bg-white/10"
                   onClick={() => setIsAskDrawerOpen(true)}
                 >
                   Ask Brain
-                </button>
+                </Button>
               </div>
             </div>
           </div>
