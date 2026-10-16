@@ -1,0 +1,7 @@
+{
+  "incident_id": "inc_cb0e563c",
+  "observed_outcome": "failed",
+  "metrics_summary": "Post-intervention check on cartservice: Intervention 'Rollback Recent Deployment' FAILED to resolve the incident. Underlying root cause 'transient_deadlock' on 'cartservice' was not addressed.",
+  "summary": "Verifier confirmed failed outcome for rb_rollback [hyp_inc_cb0e563c_cartservice].",
+  "resolution_confirmed": false
+}

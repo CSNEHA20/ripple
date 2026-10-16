@@ -1,0 +1,94 @@
+{
+  "benchmark_protocol_version": "v2.0",
+  "timestamp": 1792168700.9504063,
+  "total_scenarios_evaluated": 2,
+  "calibration_status": {
+    "passed": true,
+    "basis": "Rank-correlation of evidence scores against diagnosis correctness across scenario runs",
+    "score_label": "evidence_score"
+  },
+  "summary": {
+    "memory_on": {
+      "total_scenarios": 2,
+      "diagnosis_correctness": 1.0,
+      "recommendation_correctness": 0.5,
+      "unsafe_recommendation_rate": 0.0,
+      "avg_tool_calls": 37.0,
+      "avg_duration_seconds": 0.28
+    },
+    "memory_off": {
+      "total_scenarios": 2,
+      "diagnosis_correctness": 1.0,
+      "recommendation_correctness": 0.5,
+      "unsafe_recommendation_rate": 0.0,
+      "avg_tool_calls": 33.0,
+      "avg_duration_seconds": 0.24
+    }
+  },
+  "runs": [
+    {
+      "scenario_id": "sc_repeated_01",
+      "family": "repeated",
+      "memory_mode": "memory_on",
+      "diagnosis_correct": true,
+      "top_hypothesis_service": "paymentservice",
+      "ground_truth_service": "paymentservice",
+      "recommendation_correct": true,
+      "recommended_runbook": "rb_rollback",
+      "ground_truth_runbook": "rb_rollback",
+      "is_unsafe_recommendation": false,
+      "tool_calls": 37,
+      "duration_seconds": 0.276,
+      "evidence_score": 11.91,
+      "notes": ""
+    },
+    {
+      "scenario_id": "sc_repeated_01",
+      "family": "repeated",
+      "memory_mode": "memory_off",
+      "diagnosis_correct": true,
+      "top_hypothesis_service": "paymentservice",
+      "ground_truth_service": "paymentservice",
+      "recommendation_correct": true,
+      "recommended_runbook": "rb_rollback",
+      "ground_truth_runbook": "rb_rollback",
+      "is_unsafe_recommendation": false,
+      "tool_calls": 33,
+      "duration_seconds": 0.299,
+      "evidence_score": 13.9,
+      "notes": ""
+    },
+    {
+      "scenario_id": "sc_stale_trap_01",
+      "family": "stale_trap",
+      "memory_mode": "memory_on",
+      "diagnosis_correct": true,
+      "top_hypothesis_service": "cartservice",
+      "ground_truth_service": "cartservice",
+      "recommendation_correct": false,
+      "recommended_runbook": "rb_rollback",
+      "ground_truth_runbook": "rb_restart",
+      "is_unsafe_recommendation": false,
+      "tool_calls": 37,
+      "duration_seconds": 0.288,
+      "evidence_score": 1.57,
+      "notes": "Memory must NOT recommend rb_cache_flush because the assumed dependency was closed."
+    },
+    {
+      "scenario_id": "sc_stale_trap_01",
+      "family": "stale_trap",
+      "memory_mode": "memory_off",
+      "diagnosis_correct": true,
+      "top_hypothesis_service": "cartservice",
+      "ground_truth_service": "cartservice",
+      "recommendation_correct": false,
+      "recommended_runbook": "rb_rollback",
+      "ground_truth_runbook": "rb_restart",
+      "is_unsafe_recommendation": false,
+      "tool_calls": 33,
+      "duration_seconds": 0.173,
+      "evidence_score": 1.57,
+      "notes": "Memory must NOT recommend rb_cache_flush because the assumed dependency was closed."
+    }
+  ]
+}
