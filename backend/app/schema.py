@@ -21,6 +21,9 @@ STANDARD_INDEXES = [
     "CREATE INDEX FOR (rb:Runbook) ON (rb.id)",
     "CREATE INDEX FOR (t:Task) ON (t.id)",
     "CREATE INDEX FOR (a:Action) ON (a.id)",
+    "CREATE INDEX FOR (obs:Observation) ON (obs.id)",
+    "CREATE INDEX FOR (intv:Intervention) ON (intv.id)",
+    "CREATE INDEX FOR (out:Outcome) ON (out.id)",
 ]
 
 VECTOR_INDEXES = [

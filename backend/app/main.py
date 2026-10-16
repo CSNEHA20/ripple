@@ -485,4 +485,264 @@ def api_get_incident_hypotheses(
     }
 
 
+# ============================================================================
+# M6: Memory Layer Endpoints (Episodic, Semantic, Procedural, Outcomes, Recall)
+# ============================================================================
+
+from app.memory import (
+    recall as memory_recall,
+    record_observation,
+    supersede_observation,
+    get_known_facts,
+    propose_intervention,
+    record_observed_outcome,
+    get_incident_interventions,
+    check_applicability as check_runbook_applicability,
+    close_incident,
+)
+
+
+class RecallRequest(BaseModel):
+    alert_text: str
+    services: list[str] = []
+    as_of: float | None = None
+    k: int = 5
+
+
+class ObservationRequest(BaseModel):
+    service: str
+    text: str
+    kind: str = "observed"
+    confidence_basis: str = ""
+    weight: float = 1.0
+    incident_id: str | None = None
+
+
+class SupersedeObservationRequest(BaseModel):
+    service: str
+    new_text: str
+    kind: str = "observed"
+    confidence_basis: str = ""
+    weight: float = 1.0
+    incident_id: str | None = None
+
+
+class ProposeInterventionRequest(BaseModel):
+    incident_id: str
+    runbook_id: str
+    description: str = ""
+    predicted_outcome: str = "resolved"
+    action_class: str = "needs_approval"
+    hypothesis_id: str | None = None
+
+
+class RecordOutcomeRequest(BaseModel):
+    observed: str
+    metrics_after: dict[str, Any] | None = None
+
+
+class CloseIncidentRequest(BaseModel):
+    winning_hypothesis_id: str
+    steps_taken: list[str] = []
+    tool_calls: list[str] = []
+    affected_services: list[dict[str, str]] = []
+    handled_by: str | None = None
+    signature_text: str | None = None
+
+
+@app.post("/memory/recall")
+@app.post("/api/memory/recall")
+def api_memory_recall(
+    req: RecallRequest,
+    graph: TenantGraph = Depends(get_current_tenant),
+):
+    """Unified Memory Recall API.
+    Synthesizes episodic, semantic, procedural, and outcome memory:
+    returns similar incidents, recommended and rejected runbooks with applicability reasoning,
+    and active semantic facts.
+    """
+    try:
+        result, trace = memory_recall(
+            graph=graph,
+            alert_text=req.alert_text,
+            services=req.services,
+            as_of=req.as_of,
+            k=req.k,
+        )
+        return {
+            "data": result,
+            "trace": trace.to_dict(),
+        }
+    except Exception as e:
+        logger.error(f"Memory recall failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Memory recall failed: {str(e)}")
+
+
+@app.post("/memory/observations")
+@app.post("/api/memory/observations")
+def api_record_observation(
+    req: ObservationRequest,
+    graph: TenantGraph = Depends(get_current_tenant),
+):
+    """Record a semantic fact / observation about a service or incident."""
+    try:
+        obs = record_observation(
+            graph=graph,
+            service=req.service,
+            text=req.text,
+            kind=req.kind,
+            confidence_basis=req.confidence_basis,
+            incident_id=req.incident_id,
+            weight=req.weight,
+        )
+        return obs
+    except Exception as e:
+        logger.error(f"Failed to record observation: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to record observation: {str(e)}")
+
+
+@app.post("/memory/observations/{observation_id}/supersede")
+@app.post("/api/memory/observations/{observation_id}/supersede")
+def api_supersede_observation(
+    observation_id: str,
+    req: SupersedeObservationRequest,
+    graph: TenantGraph = Depends(get_current_tenant),
+):
+    """Contradict an old fact by superseding it with a new observation. Never deletes history."""
+    try:
+        result = supersede_observation(
+            graph=graph,
+            old_observation_id=observation_id,
+            service=req.service,
+            new_text=req.new_text,
+            kind=req.kind,
+            confidence_basis=req.confidence_basis,
+            weight=req.weight,
+            incident_id=req.incident_id,
+        )
+        return result
+    except Exception as e:
+        logger.error(f"Failed to supersede observation '{observation_id}': {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to supersede observation: {str(e)}")
+
+
+@app.get("/memory/facts")
+@app.get("/api/memory/facts")
+def api_get_known_facts(
+    service: str | None = Query(default=None, description="Optional service filter"),
+    graph: TenantGraph = Depends(get_current_tenant),
+):
+    """Retrieve active semantic facts with decay-weighted confidence."""
+    facts = get_known_facts(graph=graph, service=service)
+    return {
+        "service_filter": service,
+        "count": len(facts),
+        "facts": facts,
+    }
+
+
+@app.post("/memory/interventions")
+@app.post("/api/memory/interventions")
+def api_propose_intervention(
+    req: ProposeInterventionRequest,
+    graph: TenantGraph = Depends(get_current_tenant),
+):
+    """Propose an operational fix / intervention with predicted outcome stored separately."""
+    try:
+        intv = propose_intervention(
+            graph=graph,
+            incident_id=req.incident_id,
+            runbook_id=req.runbook_id,
+            description=req.description,
+            predicted_outcome=req.predicted_outcome,
+            action_class=req.action_class,
+            hypothesis_id=req.hypothesis_id,
+        )
+        return intv
+    except Exception as e:
+        logger.error(f"Failed to propose intervention: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to propose intervention: {str(e)}")
+
+
+@app.post("/memory/interventions/{intervention_id}/outcome")
+@app.post("/api/memory/interventions/{intervention_id}/outcome")
+def api_record_outcome(
+    intervention_id: str,
+    req: RecordOutcomeRequest,
+    graph: TenantGraph = Depends(get_current_tenant),
+):
+    """Record the observed outcome of an intervention and update runbook procedural memory."""
+    try:
+        out = record_observed_outcome(
+            graph=graph,
+            intervention_id=intervention_id,
+            observed=req.observed,
+            metrics_after=req.metrics_after,
+        )
+        return out
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Failed to record outcome for '{intervention_id}': {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to record outcome: {str(e)}")
+
+
+@app.get("/memory/incidents/{incident_id}/interventions")
+@app.get("/api/memory/incidents/{incident_id}/interventions")
+def api_get_incident_interventions(
+    incident_id: str,
+    graph: TenantGraph = Depends(get_current_tenant),
+):
+    """Get all proposed interventions, observed outcomes, and prediction errors for an incident."""
+    intvs = get_incident_interventions(graph=graph, incident_id=incident_id)
+    return {
+        "incident_id": incident_id,
+        "count": len(intvs),
+        "interventions": intvs,
+    }
+
+
+@app.get("/memory/applicability/{runbook_id}")
+@app.get("/api/memory/applicability/{runbook_id}")
+def api_check_applicability(
+    runbook_id: str,
+    as_of: float | None = Query(default=None, description="Optional temporal timestamp"),
+    graph: TenantGraph = Depends(get_current_tenant),
+):
+    """Check whether a runbook's assumed dependency pairs still hold in the current graph."""
+    res, trace = check_runbook_applicability(graph=graph, runbook_id=runbook_id, as_of=as_of)
+    return {
+        "data": res,
+        "trace": trace.to_dict(),
+    }
+
+
+@app.post("/memory/incidents/{incident_id}/close")
+@app.post("/api/memory/incidents/{incident_id}/close")
+def api_close_incident(
+    incident_id: str,
+    req: CloseIncidentRequest,
+    graph: TenantGraph = Depends(get_current_tenant),
+):
+    """Close an incident and commit its complete episodic record and similarity links to graph memory."""
+    try:
+        closed = close_incident(
+            graph=graph,
+            incident_id=incident_id,
+            winning_hypothesis_id=req.winning_hypothesis_id,
+            steps_taken=req.steps_taken,
+            tool_calls=req.tool_calls,
+            affected_services=req.affected_services,
+            handled_by=req.handled_by,
+            signature_text=req.signature_text,
+        )
+        return closed
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        logger.error(f"Failed to close incident '{incident_id}': {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to close incident: {str(e)}")
+
+
+
 
