@@ -24,6 +24,7 @@ services:
     volumes:
       - ./backend/app:/app/app
       - ./backend/tests:/app/tests
+      - ./backend/eval:/app/eval
       - ./backend/pyproject.toml:/app/pyproject.toml
       - ./data:/app/data
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]

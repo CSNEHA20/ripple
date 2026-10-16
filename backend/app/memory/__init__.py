@@ -27,6 +27,7 @@ from app.memory.semantic import (
 )
 from app.memory.episodic import close_incident
 from app.memory.recall import recall
+from app.memory.stats import get_memory_stats
 
 __all__ = [
     "calculate_decay",
@@ -43,4 +44,5 @@ __all__ = [
     "get_known_facts",
     "close_incident",
     "recall",
+    "get_memory_stats",
 ]

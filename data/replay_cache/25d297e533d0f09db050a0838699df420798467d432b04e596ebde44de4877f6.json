@@ -1,0 +1,12 @@
+{
+  "alerting_service": "cartservice (Citations: [inc_cartservice], [inc_49742c65])",
+  "severity": "P1",
+  "blast_radius_count": 3,
+  "impacted_services": [
+    "checkoutservice",
+    "frontend",
+    "loadgenerator"
+  ],
+  "summary": "Triage assessed alert on 'cartservice'. Blast radius: 3 downstream service(s) [checkoutservice, frontend, loadgenerator]. Assigned severity P1 (recalled inc_49742c65).",
+  "suggested_focus": "Investigate upstream dependencies and recent changes affecting 'cartservice'."
+}

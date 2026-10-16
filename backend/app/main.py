@@ -1,9 +1,10 @@
 import logging
 from contextlib import asynccontextmanager
 from typing import Annotated, Any
-from fastapi import FastAPI, Header, HTTPException, Query, Depends
+from fastapi import FastAPI, Header, HTTPException, Query, Depends, Request
 from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
 from app.config import settings
 from app.tenancy import TenantGraph, ensure_tenant, get_falkordb_client, sanitize_tenant_id
 from app.schema import ensure_tenant_schema
@@ -45,12 +46,37 @@ app.add_middleware(
 )
 
 
+class TenantMiddleware(BaseHTTPMiddleware):
+    """M11 Tenant Middleware:
+    Resolves tenant from X-Tenant header (or query param fallback),
+    builds the isolated TenantGraph, stores on request.state,
+    and reflects X-Tenant in response headers.
+    """
+    async def dispatch(self, request: Request, call_next):
+        tenant_header = request.headers.get("x-tenant") or request.headers.get("X-Tenant")
+        tenant_query = request.query_params.get("tenant")
+        target_tenant = sanitize_tenant_id(tenant_header or tenant_query or "storefront")
+
+        request.state.tenant_id = target_tenant
+        request.state.tenant_graph = TenantGraph(tenant_id=target_tenant)
+
+        response = await call_next(request)
+        response.headers["X-Tenant"] = target_tenant
+        return response
+
+
+app.add_middleware(TenantMiddleware)
+
+
 def get_current_tenant(
+    request: Request,
     x_tenant: Annotated[str | None, Header(description="Tenant ID header")] = None,
     tenant: Annotated[str | None, Query(description="Tenant ID query param fallback")] = None,
 ) -> TenantGraph:
-    """Dependency to extract tenant from header or query param and return an isolated TenantGraph."""
-    target_tenant = x_tenant or tenant or "storefront"
+    """Dependency to extract tenant from request state (populated by TenantMiddleware) or header/query fallback."""
+    if hasattr(request.state, "tenant_graph") and request.state.tenant_graph is not None:
+        return request.state.tenant_graph
+    target_tenant = sanitize_tenant_id(x_tenant or tenant or getattr(request.state, "tenant_id", "storefront"))
     return TenantGraph(tenant_id=target_tenant)
 
 
@@ -779,6 +805,38 @@ class ActionRejectionRequest(BaseModel):
     rejector: str = "operator"
 
 
+@app.get("/incidents")
+@app.get("/api/incidents")
+def api_list_incidents(
+    limit: int = Query(default=20, ge=1, le=100),
+    graph: TenantGraph = Depends(get_current_tenant),
+):
+    """List recent incidents for the current tenant."""
+    cypher = """
+    MATCH (i:Incident)
+    RETURN i.id AS id, i.title AS title, i.status AS status, i.service_name AS service, i.opened_ts AS opened_ts, i.resolved_ts AS resolved_ts
+    ORDER BY COALESCE(i.opened_ts, 0.0) DESC
+    LIMIT $limit
+    """
+    res = graph.query(cypher, {"limit": limit})
+    incidents = []
+    if res and res.result_set:
+        for r in res.result_set:
+            incidents.append({
+                "id": r[0],
+                "title": r[1] or r[0],
+                "status": r[2] or "unknown",
+                "service": r[3] or "",
+                "opened_ts": float(r[4] or 0.0),
+                "resolved_ts": float(r[5]) if r[5] is not None else None,
+            })
+    return {
+        "tenant_id": graph.tenant_id,
+        "count": len(incidents),
+        "incidents": incidents,
+    }
+
+
 @app.post("/incidents")
 @app.post("/api/incidents")
 def api_run_incident_crew(
@@ -901,6 +959,64 @@ def api_reject_incident_action(
     except Exception as e:
         logger.error(f"Action rejection failed: {e}")
         raise HTTPException(status_code=500, detail=f"Action rejection failed: {str(e)}")
+
+
+class DirectCloseIncidentRequest(BaseModel):
+    winning_hypothesis_id: str | None = None
+    steps_taken: list[str] = []
+    tool_calls: list[str] = []
+    affected_services: list[dict[str, str]] = []
+    handled_by: str | None = None
+    signature_text: str | None = None
+    observed_outcome: str = "resolved"
+
+
+@app.post("/incidents/{incident_id}/close")
+@app.post("/api/incidents/{incident_id}/close")
+def api_close_incident_direct(
+    incident_id: str,
+    req: DirectCloseIncidentRequest = DirectCloseIncidentRequest(),
+    graph: TenantGraph = Depends(get_current_tenant),
+):
+    """Close incident, verify outcome of any unclosed interventions, and write episodic memory."""
+    # Find winning hypothesis if not explicitly supplied
+    winning_id = req.winning_hypothesis_id
+    if not winning_id:
+        hyp_res = graph.query(
+            "MATCH (i:Incident {id: $iid})-[:HAS_HYPOTHESIS]->(h:Hypothesis) RETURN h.id ORDER BY h.evidence_score DESC LIMIT 1",
+            {"iid": incident_id},
+        )
+        if hyp_res and hyp_res.result_set:
+            winning_id = hyp_res.result_set[0][0]
+        else:
+            any_hyp = graph.query("MATCH (h:Hypothesis) RETURN h.id ORDER BY h.evidence_score DESC LIMIT 1")
+            if any_hyp and any_hyp.result_set:
+                winning_id = any_hyp.result_set[0][0]
+            else:
+                graph.query("MERGE (h:Hypothesis {id: $hid}) SET h.statement = 'Direct incident resolution', h.service = 'unknown', h.evidence_score = 1.0", {"hid": f"hyp_{incident_id}"})
+                winning_id = f"hyp_{incident_id}"
+
+    # Verify and close any unverified interventions
+    unverified_res = graph.query(
+        "MATCH (i:Incident {id: $iid})-[:HAS_INTERVENTION]->(intv:Intervention) WHERE NOT (intv)-[:VALIDATED_BY]->(:Outcome) RETURN intv.id",
+        {"iid": incident_id},
+    )
+    if unverified_res and unverified_res.result_set:
+        for u_row in unverified_res.result_set:
+            intv_id = u_row[0]
+            record_observed_outcome(graph=graph, intervention_id=intv_id, observed=req.observed_outcome)
+
+    res = close_incident(
+        graph=graph,
+        incident_id=incident_id,
+        winning_hypothesis_id=winning_id,
+        steps_taken=req.steps_taken,
+        tool_calls=req.tool_calls,
+        affected_services=req.affected_services,
+        handled_by=req.handled_by or "responder_agent",
+        signature_text=req.signature_text,
+    )
+    return res
 
 
 # ============================================================================
@@ -1145,6 +1261,71 @@ def api_inspect_evidence(
         "status": "success",
         "data": records[0],
     }
+
+
+# ============================================================================
+# M11: Backend API & Benchmark Evaluation Endpoints
+# ============================================================================
+
+from app.memory.stats import get_memory_stats
+from app.benchmark import run_benchmark, get_latest_benchmark_report
+
+
+class BenchmarkRunApiRequest(BaseModel):
+    scenarios: list[str] | None = None
+    modes: list[str] | None = None
+    mode: str = "replay"
+
+
+@app.get("/memory/stats")
+@app.get("/api/memory/stats")
+def api_get_memory_stats(
+    graph: TenantGraph = Depends(get_current_tenant),
+):
+    """Retrieve episodic counts, semantic facts status, runbook procedural success rates, and learning curve progression."""
+    try:
+        stats = get_memory_stats(graph)
+        return {
+            "status": "success",
+            "data": stats,
+        }
+    except Exception as e:
+        logger.error(f"Failed to compile memory stats: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to compile memory stats: {str(e)}")
+
+
+@app.post("/benchmark/run")
+@app.post("/api/benchmark/run")
+def api_run_benchmark(
+    req: BenchmarkRunApiRequest = BenchmarkRunApiRequest(),
+):
+    """Execute pre-registered memory-on vs memory-off benchmark across scenarios."""
+    try:
+        results = run_benchmark(
+            scenarios=req.scenarios,
+            modes=req.modes,
+            mode=req.mode,
+        )
+        return {
+            "status": "success",
+            "data": results,
+        }
+    except Exception as e:
+        logger.error(f"Benchmark run failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Benchmark run failed: {str(e)}")
+
+
+@app.get("/benchmark/report")
+@app.get("/api/benchmark/report")
+def api_get_benchmark_report():
+    """Retrieve latest pre-registered benchmark results and formatted Markdown report."""
+    try:
+        report = get_latest_benchmark_report()
+        return report
+    except Exception as e:
+        logger.error(f"Failed to fetch benchmark report: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to fetch benchmark report: {str(e)}")
+
 
 
 
