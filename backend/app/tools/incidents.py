@@ -472,66 +472,18 @@ def counterfactual_blast(
     against what would have happened if a different service had failed instead.
 
     Graph technique:
-      Set differential (observed AFFECTED vs hypothetical blast_radius) with temporal as_of.
+      Set differential (observed AFFECTED vs hypothetical blast_radius) with temporal as_of,
+      dependency paths, PageRank critical ownership, and uncertainty bounds.
     """
-    start_time = time.time()
-    trace = Trace()
+    from app.counterfactual.engine import compute_counterfactual
 
-    # 1. Fetch observed affected services from incident
-    inc_cypher = """
-    MATCH (inc:Incident {id: $id})-[:AFFECTED]->(s:Service)
-    RETURN s.name AS service
-    """
-    inc_res = graph.query(inc_cypher, {"id": observed_incident_id})
-    observed_set = {row[0] for row in inc_res.result_set} if inc_res and inc_res.result_set else set()
-
-    # 2. Run blast radius for hypothetical service
-    hypo_result = blast_radius(graph, hypothetical_service, max_depth=4, as_of=as_of)
-    trace.merge(hypo_result.trace)
-
-    hypo_affected_list = hypo_result.data.get("affected_services", [])
-    hypothetical_set = {item["service"] for item in hypo_affected_list}
-    hypothetical_set.add(hypothetical_service)
-
-    # 3. Compute diff sets
-    only_observed = sorted(list(observed_set - hypothetical_set))
-    only_hypothetical = sorted(list(hypothetical_set - observed_set))
-    both = sorted(list(observed_set.intersection(hypothetical_set)))
-
-    duration_ms = (time.time() - start_time) * 1000.0
-
-    step = TraceStep(
-        tool="counterfactual_blast",
-        cypher=inc_cypher.strip(),
-        params={
-            "observed_incident_id": observed_incident_id,
-            "hypothetical_service": hypothetical_service,
-            "as_of": as_of,
-        },
-        node_ids=sorted(list(observed_set.union(hypothetical_set))),
-        edge_ids=hypo_result.trace.edges,
-        summary=(
-            f"Counterfactual diff: observed ({len(observed_set)} services) vs "
-            f"hypothetical '{hypothetical_service}' failure ({len(hypothetical_set)} services). "
-            f"{len(both)} overlapping."
-        ),
-        rows_count=len(observed_set) + len(hypothetical_set),
-        duration_ms=duration_ms,
+    data, trace = compute_counterfactual(
+        graph=graph,
+        observed_incident_id=observed_incident_id,
+        hypothetical_service=hypothetical_service,
+        as_of=as_of,
+        compare_with_now=bool(as_of is not None),
     )
-    trace.add_step(step)
-
-    data = {
-        "observed_incident_id": observed_incident_id,
-        "hypothetical_service": hypothetical_service,
-        "as_of": as_of,
-        "observed_services": sorted(list(observed_set)),
-        "hypothetical_services": sorted(list(hypothetical_set)),
-        "diff": {
-            "only_observed": only_observed,
-            "only_hypothetical": only_hypothetical,
-            "both": both,
-        },
-        "uncertainty_note": hypo_result.data.get("uncertainty_note", ""),
-    }
 
     return ToolResult(data=data, trace=trace)
+

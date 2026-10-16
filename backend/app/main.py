@@ -973,6 +973,73 @@ def api_check_brain_freshness(
     }
 
 
+# ============================================================================
+# M9: Counterfactual Engine API
+# ============================================================================
+
+from app.counterfactual import compute_counterfactual, assess_uncertainty
+
+
+class CounterfactualRequest(BaseModel):
+    observed_incident_id: str
+    hypothetical_service: str
+    as_of: str | float | None = "incident_time"
+    compare_with_now: bool = True
+
+
+@app.post("/counterfactual")
+@app.post("/api/counterfactual")
+def api_counterfactual(
+    req: CounterfactualRequest,
+    graph: TenantGraph = Depends(get_current_tenant),
+):
+    """Compute what-if differential analysis comparing actual incident blast radius
+    against what would have happened if a hypothetical service had failed instead.
+    Returns structured diff (only_observed, only_hypothetical, both), paths,
+    PageRank critical owners, uncertainty bounds, and time-travel comparison.
+    """
+    try:
+        data, trace = compute_counterfactual(
+            graph=graph,
+            observed_incident_id=req.observed_incident_id,
+            hypothetical_service=req.hypothetical_service,
+            as_of=req.as_of,
+            compare_with_now=req.compare_with_now,
+        )
+        return {
+            "status": "success",
+            "data": data,
+            "trace": trace.to_dict(),
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Counterfactual simulation failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Counterfactual simulation failed: {str(e)}")
+
+
+@app.get("/counterfactual/uncertainty")
+@app.get("/api/counterfactual/uncertainty")
+def api_counterfactual_uncertainty(
+    services: str = Query(description="Comma-separated list of service names"),
+    as_of: float | None = Query(default=None, description="Optional timestamp for as-of evaluation"),
+    graph: TenantGraph = Depends(get_current_tenant),
+):
+    """Assess uncertainty, unverified edges, and lower-bound warnings for a set of services."""
+    try:
+        svc_list = [s.strip() for s in services.split(",") if s.strip()]
+        data, trace = assess_uncertainty(graph=graph, services=svc_list, as_of=as_of)
+        return {
+            "status": "success",
+            "data": data,
+            "trace": trace.to_dict(),
+        }
+    except Exception as e:
+        logger.error(f"Uncertainty assessment failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Uncertainty assessment failed: {str(e)}")
+
+
+
 
 
 
