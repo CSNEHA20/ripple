@@ -86,8 +86,10 @@ def blast_radius(
         edge_ids=sorted(list(visited_edges)),
         summary=f"Blast radius of '{service}': {len(sorted_impacted)} downstream services affected up to {max_depth} hops.",
         rows_count=len(res.result_set) if res else 0,
+        rows=[list(r) for r in res.result_set[:25]] if res and res.result_set else [],
         duration_ms=duration_ms,
     )
+
     trace.add_step(step)
 
     data = {

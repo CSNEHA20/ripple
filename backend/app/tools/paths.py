@@ -125,9 +125,11 @@ def path_between(
         edge_ids=edge_pairs_list,
         summary=summary,
         rows_count=len(res.result_set) if res else 0,
+        rows=[list(r) for r in res.result_set[:10]] if res and res.result_set else [],
         duration_ms=duration_ms,
     )
     trace.add_step(step)
+
 
     data = {
         "caller": caller,

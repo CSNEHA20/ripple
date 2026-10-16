@@ -1039,6 +1039,115 @@ def api_counterfactual_uncertainty(
         raise HTTPException(status_code=500, detail=f"Uncertainty assessment failed: {str(e)}")
 
 
+# ============================================================================
+# M10: Provenance, Explainability, Inspector, and Replay API
+# ============================================================================
+
+from app.trace import (
+    get_step_inspection,
+    get_why_replay,
+    get_subgraph,
+    get_evidence_provenance,
+    GLOBAL_TRACE_REGISTRY,
+)
+
+
+class WhyReplayRequest(BaseModel):
+    trace: dict[str, Any] | None = None
+    steps: list[dict[str, Any]] | None = None
+    step_ids: list[str] | None = None
+
+
+@app.get("/inspect/{trace_step_id}")
+@app.get("/api/inspect/{trace_step_id}")
+def api_inspect_step(
+    trace_step_id: str,
+    graph: TenantGraph = Depends(get_current_tenant),
+):
+    """Retrieve full provenance for a single trace step:
+    Exact Cypher, parameters, returned rows, and touched subgraph for Inspector Drawer.
+    """
+    inspection = get_step_inspection(step_id=trace_step_id, graph=graph)
+    if not inspection:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Trace step '{trace_step_id}' not found in active session registry.",
+        )
+    return {
+        "status": "success",
+        "data": inspection,
+    }
+
+
+@app.post("/inspect/replay")
+@app.post("/api/inspect/replay")
+def api_inspect_replay(
+    req: WhyReplayRequest,
+    graph: TenantGraph = Depends(get_current_tenant),
+):
+    """Generate sequential 'Why' Replay animation stepping through the trace in order.
+    Returns active highlights, delta additions, and cumulative subgraphs at each step.
+    """
+    steps_payload = []
+    if req.trace and "steps" in req.trace:
+        steps_payload = req.trace["steps"]
+    elif req.steps:
+        steps_payload = req.steps
+    elif req.step_ids:
+        for sid in req.step_ids:
+            s = GLOBAL_TRACE_REGISTRY.get(sid)
+            if s:
+                steps_payload.append(s.to_dict())
+
+    replay_frames = get_why_replay(steps_payload)
+    return {
+        "status": "success",
+        "total_steps": len(replay_frames),
+        "frames": replay_frames,
+    }
+
+
+@app.get("/graph/subgraph")
+@app.get("/api/graph/subgraph")
+def api_get_subgraph(
+    nodes: str | None = Query(default=None, description="Comma-separated list of node IDs to focus on"),
+    service: str | None = Query(default=None, description="Center service name for neighborhood"),
+    radius: int = Query(default=1, ge=1, le=4, description="Neighborhood traversal radius"),
+    as_of: float | None = Query(default=None, description="Optional timestamp for temporal graph state"),
+    graph: TenantGraph = Depends(get_current_tenant),
+):
+    """Retrieve styled nodes and edges for GraphCanvas and Inspector Drawer."""
+    node_ids = [n.strip() for n in nodes.split(",") if n.strip()] if nodes else None
+    data = get_subgraph(
+        graph=graph,
+        node_ids=node_ids,
+        center_service=service,
+        radius=radius,
+        as_of=as_of,
+    )
+    return {
+        "status": "success",
+        "data": data,
+    }
+
+
+@app.get("/inspect/evidence/{evidence_id}")
+@app.get("/api/inspect/evidence/{evidence_id}")
+def api_inspect_evidence(
+    evidence_id: str,
+    graph: TenantGraph = Depends(get_current_tenant),
+):
+    """Retrieve evidence provenance: source, timestamp, freshness, and observed/inferred badge."""
+    records = get_evidence_provenance(graph=graph, evidence_id_or_ids=evidence_id)
+    if not records:
+        raise HTTPException(status_code=404, detail=f"Evidence '{evidence_id}' not found.")
+    return {
+        "status": "success",
+        "data": records[0],
+    }
+
+
+
 
 
 
