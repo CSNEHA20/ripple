@@ -11,6 +11,9 @@ from app.actions.executors.base import ActionExecutor, ExecutionReceipt
 logger = logging.getLogger("ripple.actions.executors.github_dispatch")
 
 
+_GITHUB_EXECUTED_KEYS: set[str] = set()
+
+
 class GitHubDispatchExecutor(ActionExecutor):
     """Triggers GitHub Actions workflow_dispatch to execute real rollback or mitigation workflows."""
 
@@ -32,6 +35,47 @@ class GitHubDispatchExecutor(ActionExecutor):
         idempotency_key = f"gh_{action_id}_{hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()[:12]}"
         audit_content = f"{idempotency_key}:{approver}:{now_ts}"
         audit_hash = hashlib.sha256(audit_content.encode()).hexdigest()
+
+        # 1. Enforce persisted idempotency across restarts
+        if not dry_run:
+            persisted = self.check_persisted_idempotency(graph, idempotency_key)
+            if persisted:
+                return persisted
+            if idempotency_key in _GITHUB_EXECUTED_KEYS:
+                return ExecutionReceipt(
+                    idempotency_key=idempotency_key,
+                    action_id=action_id,
+                    incident_id=incident_id,
+                    action_kind=action_kind,
+                    approver=approver,
+                    executed_ts=now_ts,
+                    status="idempotent_skip",
+                    details={"message": f"GitHub workflow dispatch with key {idempotency_key} already sent. Skipping duplicate."},
+                    audit_hash=audit_hash,
+                )
+            _GITHUB_EXECUTED_KEYS.add(idempotency_key)
+
+        # 2. Refuse cleanly if repository is not configured for this tenant
+        if not self.repo or self.repo == "GoogleCloudPlatform/microservices-demo":
+            details = {
+                "error": "No GitHub repository configured for this tenant. Configure repository and workflow in Integrations settings.",
+                "action_kind": action_kind,
+                "configured": False,
+            }
+            logger.warning(f"[GitHubDispatchExecutor] Refused action {action_kind}: no repo configured.")
+            receipt = ExecutionReceipt(
+                idempotency_key=idempotency_key,
+                action_id=action_id,
+                incident_id=incident_id,
+                action_kind=action_kind,
+                approver=approver,
+                executed_ts=now_ts,
+                status="refused",
+                details=details,
+                audit_hash=audit_hash,
+            )
+            self.record_audit_log(graph, receipt)
+            return receipt
 
         status = "executed"
         details: dict[str, Any] = {"repo": self.repo, "workflow": "rollback.yml", "action_kind": action_kind}
@@ -80,3 +124,4 @@ class GitHubDispatchExecutor(ActionExecutor):
         )
         self.record_audit_log(graph, receipt)
         return receipt
+

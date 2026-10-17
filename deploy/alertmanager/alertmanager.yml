@@ -1,0 +1,18 @@
+global:
+  resolve_timeout: 1m
+
+route:
+  receiver: "ripple-webhook"
+  group_by: ["alertname", "service"]
+  group_wait: 2s
+  group_interval: 5s
+  repeat_interval: 1m
+
+receivers:
+  - name: "ripple-webhook"
+    webhook_configs:
+      - url: "http://backend:8000/webhooks/alert"
+        send_resolved: true
+        http_config:
+          headers:
+            X-Ripple-Signature: "sha256=alerts_dev_signature"

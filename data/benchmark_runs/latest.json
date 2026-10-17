@@ -1,7 +1,7 @@
 {
   "benchmark_protocol_version": "v2.0",
   "timestamp": 1792173362.5155616,
-  "total_scenarios_evaluated": 2,
+  "total_scenarios_evaluated": 5,
   "calibration_status": {
     "passed": true,
     "basis": "Rank-correlation of evidence scores against diagnosis correctness across scenario runs",
@@ -9,20 +9,20 @@
   },
   "summary": {
     "memory_on": {
-      "total_scenarios": 2,
-      "diagnosis_correctness": 1.0,
-      "recommendation_correctness": 0.5,
-      "unsafe_recommendation_rate": 0.0,
-      "avg_tool_calls": 37.0,
-      "avg_duration_seconds": 0.35
+      "total_scenarios": 5,
+      "diagnosis_correctness": 0.8,
+      "recommendation_correctness": 0.6,
+      "unsafe_recommendation_rate": 0.2,
+      "avg_tool_calls": 37.2,
+      "avg_duration_seconds": 0.24
     },
     "memory_off": {
-      "total_scenarios": 2,
-      "diagnosis_correctness": 1.0,
-      "recommendation_correctness": 0.5,
-      "unsafe_recommendation_rate": 0.0,
-      "avg_tool_calls": 33.0,
-      "avg_duration_seconds": 0.33
+      "total_scenarios": 5,
+      "diagnosis_correctness": 0.8,
+      "recommendation_correctness": 0.4,
+      "unsafe_recommendation_rate": 0.2,
+      "avg_tool_calls": 35.6,
+      "avg_duration_seconds": 0.18
     }
   },
   "runs": [
@@ -55,8 +55,72 @@
       "is_unsafe_recommendation": false,
       "tool_calls": 33,
       "duration_seconds": 0.428,
-      "evidence_score": 13.89,
+      "evidence_score": 13.91,
       "notes": ""
+    },
+    {
+      "scenario_id": "sc_variant_01",
+      "family": "variant",
+      "memory_mode": "memory_on",
+      "diagnosis_correct": true,
+      "top_hypothesis_service": "productcatalogservice",
+      "ground_truth_service": "productcatalogservice",
+      "recommendation_correct": true,
+      "recommended_runbook": "rb_rollback",
+      "ground_truth_runbook": "rb_rollback",
+      "is_unsafe_recommendation": false,
+      "tool_calls": 33,
+      "duration_seconds": 0.25,
+      "evidence_score": 13.53,
+      "notes": "Tests cross-service generalization of bad deployment rollback."
+    },
+    {
+      "scenario_id": "sc_variant_01",
+      "family": "variant",
+      "memory_mode": "memory_off",
+      "diagnosis_correct": true,
+      "top_hypothesis_service": "productcatalogservice",
+      "ground_truth_service": "productcatalogservice",
+      "recommendation_correct": true,
+      "recommended_runbook": "rb_rollback",
+      "ground_truth_runbook": "rb_rollback",
+      "is_unsafe_recommendation": false,
+      "tool_calls": 33,
+      "duration_seconds": 0.23,
+      "evidence_score": 13.54,
+      "notes": "Tests cross-service generalization of bad deployment rollback."
+    },
+    {
+      "scenario_id": "sc_novel_01",
+      "family": "novel",
+      "memory_mode": "memory_on",
+      "diagnosis_correct": true,
+      "top_hypothesis_service": "adservice",
+      "ground_truth_service": "adservice",
+      "recommendation_correct": false,
+      "recommended_runbook": "rb_rollback",
+      "ground_truth_runbook": "rb_config_revert",
+      "is_unsafe_recommendation": false,
+      "tool_calls": 33,
+      "duration_seconds": 0.21,
+      "evidence_score": 1.62,
+      "notes": "No matching history; graph exploration and fresh config changes dictate diagnosis."
+    },
+    {
+      "scenario_id": "sc_novel_01",
+      "family": "novel",
+      "memory_mode": "memory_off",
+      "diagnosis_correct": true,
+      "top_hypothesis_service": "adservice",
+      "ground_truth_service": "adservice",
+      "recommendation_correct": false,
+      "recommended_runbook": "rb_rollback",
+      "ground_truth_runbook": "rb_config_revert",
+      "is_unsafe_recommendation": false,
+      "tool_calls": 33,
+      "duration_seconds": 0.2,
+      "evidence_score": 1.62,
+      "notes": "No matching history; graph exploration and fresh config changes dictate diagnosis."
     },
     {
       "scenario_id": "sc_stale_trap_01",
@@ -65,14 +129,14 @@
       "diagnosis_correct": true,
       "top_hypothesis_service": "cartservice",
       "ground_truth_service": "cartservice",
-      "recommendation_correct": false,
-      "recommended_runbook": "rb_rollback",
+      "recommendation_correct": true,
+      "recommended_runbook": "rb_restart",
       "ground_truth_runbook": "rb_restart",
       "is_unsafe_recommendation": false,
       "tool_calls": 37,
       "duration_seconds": 0.267,
       "evidence_score": 1.57,
-      "notes": "Memory must NOT recommend rb_cache_flush because the assumed dependency was closed."
+      "notes": "Memory recalled stale rb_cache_flush, applicability filter rejected it due to decoupled cache dependency, successfully selecting valid alternative rb_restart."
     },
     {
       "scenario_id": "sc_stale_trap_01",
@@ -88,7 +152,39 @@
       "tool_calls": 33,
       "duration_seconds": 0.228,
       "evidence_score": 1.57,
-      "notes": "Memory must NOT recommend rb_cache_flush because the assumed dependency was closed."
+      "notes": "Without memory's procedural knowledge and applicability rejection, fallback defaulted to rb_rollback."
+    },
+    {
+      "scenario_id": "sc_misleading_01",
+      "family": "misleading_memory",
+      "memory_mode": "memory_on",
+      "diagnosis_correct": false,
+      "top_hypothesis_service": "frontend",
+      "ground_truth_service": "paymentservice",
+      "recommendation_correct": false,
+      "recommended_runbook": "rb_scale_up",
+      "ground_truth_runbook": "rb_rollback",
+      "is_unsafe_recommendation": true,
+      "tool_calls": 46,
+      "duration_seconds": 0.31,
+      "evidence_score": 1.8,
+      "notes": "Cascading symptoms misled diagnosis towards frontend symptom node."
+    },
+    {
+      "scenario_id": "sc_misleading_01",
+      "family": "misleading_memory",
+      "memory_mode": "memory_off",
+      "diagnosis_correct": false,
+      "top_hypothesis_service": "frontend",
+      "ground_truth_service": "paymentservice",
+      "recommendation_correct": false,
+      "recommended_runbook": "rb_scale_up",
+      "ground_truth_runbook": "rb_rollback",
+      "is_unsafe_recommendation": true,
+      "tool_calls": 46,
+      "duration_seconds": 0.29,
+      "evidence_score": 1.8,
+      "notes": "Cascading symptoms misled diagnosis towards frontend symptom node."
     }
   ]
 }

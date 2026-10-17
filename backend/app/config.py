@@ -67,7 +67,7 @@ class Settings(BaseSettings):
     llm_provider: str | None = None
     embeddings_backend: str = "semantic"
     github_token: str | None = None
-    github_repo: str = "GoogleCloudPlatform/microservices-demo"
+    github_repo: str | None = None
     data_dir: str = "data"
     webhook_secret: str | None = None
     slack_webhook_url: str | None = None

@@ -203,8 +203,51 @@ def _generate_curated_issues() -> list[dict[str, Any]]:
     return issues
 
 
+def _parse_iso_ts(iso_str: str | None, default_ts: float | None = None) -> float:
+    if not iso_str:
+        return default_ts if default_ts is not None else time.time()
+    try:
+        from datetime import datetime
+        return datetime.fromisoformat(iso_str.replace("Z", "+00:00")).timestamp()
+    except Exception:
+        return default_ts if default_ts is not None else time.time()
+
+
+SERVICE_KEYWORDS: dict[str, list[str]] = {
+    "paymentservice": ["payment", "billing", "credit", "src/paymentservice"],
+    "cartservice": ["cart", "redis", "redis-cart", "src/cartservice"],
+    "checkoutservice": ["checkout", "order", "src/checkoutservice"],
+    "currencyservice": ["currency", "exchange", "src/currencyservice"],
+    "productcatalogservice": ["product", "catalog", "src/productcatalogservice"],
+    "shippingservice": ["shipping", "freight", "src/shippingservice"],
+    "emailservice": ["email", "smtp", "src/emailservice"],
+    "recommendationservice": ["recommendation", "suggest", "src/recommendationservice"],
+    "adservice": ["ad", "advertisement", "src/adservice"],
+    "frontend": ["frontend", "ui", "web", "layout", "src/frontend"],
+}
+
+
+def _infer_service_from_text(title: str, body: str) -> str:
+    combined = f"{title} {body}".lower()
+    for svc, keywords in SERVICE_KEYWORDS.items():
+        if any(kw in combined for kw in keywords):
+            return svc
+    return "shared"
+
+
+def infer_service_from_path(filepath: str) -> str | None:
+    fp = filepath.lower()
+    for svc in SERVICE_KEYWORDS.keys():
+        if f"src/{svc}/" in fp or f"/{svc}/" in fp or fp.startswith(f"{svc}/"):
+            return svc
+    return None
+
+
 def fetch_real_github_api(repo: str, token: str) -> dict[str, Any] | None:
-    """Attempt live GitHub REST API fetch for contributors, pull requests, and issues."""
+    """Attempt live GitHub REST API fetch for contributors, pull requests, issues, and deployments."""
+    if not repo or not token or repo == "GoogleCloudPlatform/microservices-demo":
+        return None
+
     headers = {
         "Authorization": f"Bearer {token}",
         "Accept": "application/vnd.github+json",
@@ -214,56 +257,125 @@ def fetch_real_github_api(repo: str, token: str) -> dict[str, Any] | None:
     try:
         import httpx
         with httpx.Client(timeout=10.0) as client:
-            # 1. Contributors
-            contrib_resp = client.get(f"{base_url}/contributors?per_page=30", headers=headers)
+            # 1. Contributors (paginated up to 100)
+            contrib_resp = client.get(f"{base_url}/contributors?per_page=100", headers=headers)
             if contrib_resp.status_code != 200:
                 logger.warning(f"GitHub API contributors failed: {contrib_resp.status_code}")
                 return None
             contributors = [{"login": c["login"], "name": c.get("name") or c["login"]} for c in contrib_resp.json()]
 
-            # 2. Pull requests
-            pr_resp = client.get(f"{base_url}/pulls?state=all&per_page=40", headers=headers)
+            # 2. Try fetching CODEOWNERS for true ownership
+            codeowners_map: list[dict[str, Any]] = []
+            co_resp = client.get(f"{base_url}/contents/.github/CODEOWNERS", headers=headers)
+            if co_resp.status_code != 200:
+                co_resp = client.get(f"{base_url}/contents/CODEOWNERS", headers=headers)
+            if co_resp.status_code == 200:
+                try:
+                    import base64
+                    co_content = base64.b64decode(co_resp.json().get("content", "")).decode("utf-8", errors="ignore")
+                    for line in co_content.splitlines():
+                        line = line.strip()
+                        if not line or line.startswith("#"):
+                            continue
+                        parts = line.split()
+                        if len(parts) >= 2:
+                            path_part, owner_part = parts[0], parts[1].lstrip("@")
+                            svc = infer_service_from_path(path_part)
+                            if svc:
+                                codeowners_map.append({"login": owner_part, "service": svc, "n": 30, "last_ts": time.time(), "is_owner": True})
+                except Exception:
+                    pass
+
+            # 3. Pull requests (paginated up to 100) with path-based service mapping
+            pr_resp = client.get(f"{base_url}/pulls?state=all&per_page=100", headers=headers)
             prs = []
             if pr_resp.status_code == 200:
                 for p in pr_resp.json():
+                    title = p.get("title", "")
+                    body = p.get("body") or ""
+                    pr_num = p["number"]
+
+                    # Attempt path mapping by changed files
+                    svc = None
+                    try:
+                        files_resp = client.get(f"{base_url}/pulls/{pr_num}/files?per_page=10", headers=headers)
+                        if files_resp.status_code == 200:
+                            for f in files_resp.json():
+                                svc = infer_service_from_path(f.get("filename", ""))
+                                if svc:
+                                    break
+                    except Exception:
+                        pass
+
+                    if not svc:
+                        svc = _infer_service_from_text(title, body)
+
+                    merged_iso = p.get("merged_at")
+                    created_iso = p.get("created_at")
+                    merged_ts = _parse_iso_ts(merged_iso) if merged_iso else _parse_iso_ts(created_iso)
+
                     prs.append({
-                        "number": p["number"],
-                        "title": p.get("title", ""),
-                        "body": p.get("body") or "",
+                        "number": pr_num,
+                        "title": title,
+                        "body": body,
                         "author": p.get("user", {}).get("login", "unknown"),
-                        "service": "frontend",
-                        "merged_at": time.time(),
+                        "service": svc,
+                        "merged_at": merged_ts,
                         "url": p.get("html_url", ""),
                         "tag": "real_pr",
                     })
 
-            # 3. Issues
-            issue_resp = client.get(f"{base_url}/issues?state=all&per_page=40", headers=headers)
+            # 4. Issues (paginated up to 100)
+            issue_resp = client.get(f"{base_url}/issues?state=all&per_page=100", headers=headers)
             issues = []
             if issue_resp.status_code == 200:
                 for iss in issue_resp.json():
                     if "pull_request" not in iss:
+                        title = iss.get("title", "")
+                        body = iss.get("body") or ""
+                        svc = _infer_service_from_text(title, body)
                         issues.append({
                             "number": iss["number"],
-                            "title": iss.get("title", ""),
-                            "body": iss.get("body") or "",
+                            "title": title,
+                            "body": body,
                             "author": iss.get("user", {}).get("login", "unknown"),
-                            "service": "frontend",
+                            "service": svc,
                             "state": iss.get("state", "open"),
-                            "created_at": time.time(),
+                            "created_at": _parse_iso_ts(iss.get("created_at")),
                             "url": iss.get("html_url", ""),
                         })
+
+            # 5. Real Deployments
+            deployments: list[dict[str, Any]] = []
+            dep_resp = client.get(f"{base_url}/deployments?per_page=50", headers=headers)
+            if dep_resp.status_code == 200:
+                for d in dep_resp.json():
+                    dep_desc = d.get("description", "")
+                    svc = _infer_service_from_text(dep_desc, "")
+                    deployments.append({
+                        "id": str(d.get("id")),
+                        "service": svc,
+                        "version": d.get("ref", "v1.0.0"),
+                        "ts": _parse_iso_ts(d.get("created_at")),
+                        "author": d.get("creator", {}).get("login", "system"),
+                        "commit_sha": d.get("sha", "")[:7],
+                        "source": "real",
+                    })
 
             return {
                 "source": "real",
                 "contributors": contributors or CONTRIBUTORS_DATA,
-                "service_commits": SERVICE_COMMITS_MAP,
+                "service_commits": codeowners_map or SERVICE_COMMITS_MAP,
                 "pull_requests": prs or _generate_curated_prs(),
                 "issues": issues or _generate_curated_issues(),
+                "deployments": deployments,
+                "last_synced_at": time.time(),
+                "is_real": True,
             }
     except Exception as e:
         logger.warning(f"Real GitHub API sync error: {e}")
         return None
+
 
 
 def fetch_or_load_github_data() -> dict[str, Any]:
@@ -409,6 +521,26 @@ def load_github_data(graph: TenantGraph) -> dict[str, Any]:
         )
         pr_count += 1
         deploy_count += 1
+
+    # Ingest any standalone live deployments pulled from GitHub deployments API
+    for dep in data.get("deployments", []):
+        if dep.get("service") and dep.get("service") != "shared":
+            cypher_dep = """
+            MATCH (s:Service {name: $service})
+            MERGE (d:Deployment {id: $id})
+            SET d.service = $service,
+                d.version = $version,
+                d.ts = $ts,
+                d.author = $author,
+                d.commit_sha = $commit_sha,
+                d.source = 'real'
+            MERGE (d)-[:DEPLOYED_TO]->(s)
+            """
+            try:
+                graph.query(cypher_dep, dep)
+                deploy_count += 1
+            except Exception:
+                pass
 
     # 4. Ingest Issues
     issue_count = 0

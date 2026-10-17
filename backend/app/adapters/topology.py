@@ -8,26 +8,47 @@ from app.adapters.base import TopologyEdgeRecord
 logger = logging.getLogger("ripple.adapters.topology")
 
 
-def discover_topology_from_environment(compose_file_path: str = "docker-compose.yml") -> list[TopologyEdgeRecord]:
-    """Parse docker-compose or container definitions for environment variables ending in _ADDR or _HOST."""
+TARGET_COMPOSE_CANDIDATES = [
+    os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))), "data", "target_compose.yml"),
+    os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "data", "target_compose.yml"),
+    os.path.abspath("data/target_compose.yml"),
+    os.path.abspath("../data/target_compose.yml"),
+    "data/target_compose.yml",
+    "target_compose.yml",
+]
+
+
+def discover_topology_from_environment(compose_file_path: str | None = None) -> list[TopologyEdgeRecord]:
+    """Parse docker-compose or container definitions from the monitored target system.
+    Avoids reading Ripple's own operational docker-compose.yml.
+    """
     edges: list[TopologyEdgeRecord] = []
-    if not os.path.exists(compose_file_path):
+
+    # Resolve target file path
+    target_path = compose_file_path
+    if not target_path or target_path in ("docker-compose.yml", "./docker-compose.yml"):
+        for cand in TARGET_COMPOSE_CANDIDATES:
+            if os.path.exists(cand):
+                target_path = cand
+                break
+
+    if not target_path or not os.path.exists(target_path):
+        logger.warning(f"Target compose definition not found: {target_path}")
         return edges
 
     try:
-        with open(compose_file_path, "r", encoding="utf-8") as f:
+        with open(target_path, "r", encoding="utf-8") as f:
             content = f.read()
 
-        # Simple regex matcher for service blocks and env vars
         current_service = None
         for line in content.splitlines():
             svc_match = re.match(r"^\s{2}([a-zA-Z0-9_\-]+):", line)
             if svc_match:
-                current_service = svc_match.group(1)
+                current_service = svc_match.group(1).lower().strip()
             elif current_service:
                 addr_match = re.search(r"([A-Z0-9_]+)_(?:ADDR|HOST)[:=]\s*([a-zA-Z0-9_\-]+)", line)
                 if addr_match:
-                    target_svc = addr_match.group(2)
+                    target_svc = addr_match.group(2).lower().strip()
                     if target_svc != current_service:
                         edges.append(
                             TopologyEdgeRecord(
@@ -40,9 +61,11 @@ def discover_topology_from_environment(compose_file_path: str = "docker-compose.
                             )
                         )
     except Exception as e:
-        logger.warning(f"Error discovering topology from {compose_file_path}: {e}")
+        logger.warning(f"Error discovering topology from {target_path}: {e}")
 
+    logger.info(f"Discovered {len(edges)} topology edges from monitored target manifest {target_path}")
     return edges
+
 
 
 def apply_discovered_topology(graph: TenantGraph, edges: list[TopologyEdgeRecord]) -> int:

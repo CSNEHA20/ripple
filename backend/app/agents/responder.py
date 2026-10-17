@@ -51,10 +51,11 @@ class ResponderAgent:
     - Creates 'verify' Task (blocked by the remediation action if unapproved).
     """
 
-    def __init__(self, mode: str = "replay"):
+    def __init__(self, mode: str = "replay", memory_enabled: bool = True):
         self.agent_name = "Responder"
         self.role = "responder"
         self.mode = mode
+        self.memory_enabled = memory_enabled
         self.llm = LLMWrapper(mode=mode)
         self.tool_loop = ToolLoop(mode=mode)
 
@@ -94,15 +95,25 @@ class ResponderAgent:
         paged_logins = [p["person"] for p in experts if isinstance(p, dict) and p.get("person")]
 
         # 3. Tool 2: rank_runbooks
-        recalled = payload.get("recalled_memory", {})
-        sim_incidents = recalled.get("similar_incidents", [])
+        recalled = payload.get("recalled_memory", {}) if self.memory_enabled else {}
+        rec_rb_mem = recalled.get("recommended_runbook") if self.memory_enabled else None
+        sim_incidents = recalled.get("similar_incidents", []) if self.memory_enabled else []
         inc_ids = [
             (inc.get("incident_id") or inc.get("id"))
             for inc in sim_incidents
             if (inc.get("incident_id") or inc.get("id"))
-        ]
+        ] if self.memory_enabled else []
         ranked_rbs, rb_trace = rank_runbooks(graph, incident_ids=inc_ids)
         trace.merge(rb_trace)
+
+        # If memory recalled a specific proven runbook, prioritize it at the top of candidates
+        if rec_rb_mem and isinstance(rec_rb_mem, dict):
+            rec_id = rec_rb_mem.get("runbook_id") or rec_rb_mem.get("id")
+            if rec_id:
+                existing = [rb for rb in ranked_rbs if (rb.get("runbook_id") or rb.get("id")) == rec_id]
+                if existing:
+                    ranked_rbs.remove(existing[0])
+                    ranked_rbs.insert(0, existing[0])
 
         # 4. Tool 3: check_applicability for top candidate runbook
         chosen_rb_id = None
@@ -136,7 +147,7 @@ class ResponderAgent:
                     alt_id = alt_rb.get("runbook_id") or alt_rb.get("id")
                     alt_app, alt_trace = check_applicability(graph, runbook_id=alt_id, as_of=ref_ts)
                     trace.merge(alt_trace)
-                    if alt_app.get("is_applicable", False):
+                    if alt_app.get("applicable", False) or alt_app.get("is_applicable", False):
                         chosen_rb_id = alt_id
                         chosen_rb_title = alt_rb.get("title", alt_id)
                         is_applicable = True
@@ -144,8 +155,8 @@ class ResponderAgent:
 
                 if not chosen_rb_id:
                     # Generic fallback mitigation
-                    chosen_rb_id = "rb_scale_up"
-                    chosen_rb_title = "Scale Up Service Replicas"
+                    chosen_rb_id = "rb_restart" if "deadlock" in str(payload).lower() else "rb_scale_up"
+                    chosen_rb_title = "Restart Service" if chosen_rb_id == "rb_restart" else "Scale Up Service Replicas"
                     is_applicable = True
             else:
                 chosen_rb_id = cand_id

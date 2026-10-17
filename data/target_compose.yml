@@ -1,0 +1,69 @@
+# Monitored microservices demo target compose definition
+services:
+  frontend:
+    image: gcr.io/google-samples/microservices-demo/frontend:v0.8.0
+    environment:
+      - PORT=8080
+      - PRODUCT_CATALOG_SERVICE_ADDR=productcatalogservice:3550
+      - CURRENCY_SERVICE_ADDR=currencyservice:7000
+      - CART_SERVICE_ADDR=cartservice:7070
+      - RECOMMENDATION_SERVICE_ADDR=recommendationservice:8080
+      - SHIPPING_SERVICE_ADDR=shippingservice:50051
+      - CHECKOUT_SERVICE_ADDR=checkoutservice:5050
+      - AD_SERVICE_ADDR=adservice:9555
+
+  checkoutservice:
+    image: gcr.io/google-samples/microservices-demo/checkoutservice:v0.8.0
+    environment:
+      - PORT=5050
+      - PRODUCT_CATALOG_SERVICE_ADDR=productcatalogservice:3550
+      - SHIPPING_SERVICE_ADDR=shippingservice:50051
+      - PAYMENT_SERVICE_ADDR=paymentservice:50051
+      - EMAIL_SERVICE_ADDR=emailservice:5000
+      - CURRENCY_SERVICE_ADDR=currencyservice:7000
+      - CART_SERVICE_ADDR=cartservice:7070
+
+  cartservice:
+    image: gcr.io/google-samples/microservices-demo/cartservice:v0.8.0
+    environment:
+      - PORT=7070
+      - REDIS_ADDR=redis-cart:6379
+
+  paymentservice:
+    image: gcr.io/google-samples/microservices-demo/paymentservice:v0.8.0
+    environment:
+      - PORT=50051
+
+  currencyservice:
+    image: gcr.io/google-samples/microservices-demo/currencyservice:v0.8.0
+    environment:
+      - PORT=7000
+
+  productcatalogservice:
+    image: gcr.io/google-samples/microservices-demo/productcatalogservice:v0.8.0
+    environment:
+      - PORT=3550
+
+  recommendationservice:
+    image: gcr.io/google-samples/microservices-demo/recommendationservice:v0.8.0
+    environment:
+      - PORT=8080
+      - PRODUCT_CATALOG_SERVICE_ADDR=productcatalogservice:3550
+
+  shippingservice:
+    image: gcr.io/google-samples/microservices-demo/shippingservice:v0.8.0
+    environment:
+      - PORT=50051
+
+  emailservice:
+    image: gcr.io/google-samples/microservices-demo/emailservice:v0.8.0
+    environment:
+      - PORT=5000
+
+  adservice:
+    image: gcr.io/google-samples/microservices-demo/adservice:v0.8.0
+    environment:
+      - PORT=9555
+
+  redis-cart:
+    image: redis:alpine

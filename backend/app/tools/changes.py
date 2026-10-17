@@ -38,6 +38,33 @@ def recent_changes(
         "ref_ts": ref_ts,
         "start_window_ts": start_window_ts,
     }
+
+    # Query DeploymentAdapter for live real deployments if configured
+    try:
+        from app.adapters.resolver import get_deployment_adapter
+        dep_adapter = get_deployment_adapter(graph.tenant_id)
+        live_deps = dep_adapter.fetch_recent_deployments(service=service, hours=hours, ref_ts=ref_ts)
+        live_cypher = (
+            "MATCH (s:Service {name: $svc}) "
+            "MERGE (d:Deployment {id: $id}) "
+            "SET d.version = $ver, d.ts = $ts, d.source = 'real', d.author = $author, d.commit_sha = $sha "
+            "MERGE (d)-[:DEPLOYED_TO]->(s)"
+        )
+        for ld in live_deps:
+            graph.query(
+                live_cypher,
+                {
+                    "svc": service,
+                    "id": f"dep_{service}_{ld.version}_{int(ld.ts)}",
+                    "ver": ld.version,
+                    "ts": ld.ts,
+                    "author": ld.author,
+                    "sha": ld.commit_sha,
+                },
+            )
+    except Exception:
+        pass
+
     dep_res = graph.query(dep_cypher, dep_params)
 
     deployments: list[dict[str, Any]] = []

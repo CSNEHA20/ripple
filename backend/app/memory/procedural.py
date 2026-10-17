@@ -97,20 +97,44 @@ def rank_runbooks(
     start_time = time.time()
     trace = Trace()
 
-    cypher = """
-    MATCH (rb:Runbook)
-    OPTIONAL MATCH (rb)-[:ASSUMES]->(s:Service)
-    RETURN rb.id AS id,
-           rb.title AS title,
-           rb.description AS description,
-           rb.action_class AS action_class,
-           rb.assumes AS assumes,
-           collect(DISTINCT s.name) AS assumed_services,
-           rb.success_count AS success_count,
-           rb.fail_count AS fail_count,
-           rb.historical_success_rate AS rate
-    """
-    res = graph.query(cypher)
+    inc_list = list(incident_ids or [])
+    if inc_list:
+        cypher = """
+        MATCH (rb:Runbook)
+        OPTIONAL MATCH (rb)-[:ASSUMES]->(s:Service)
+        OPTIONAL MATCH (inc:Incident)-[:HAS_HYPOTHESIS]->(h:Hypothesis)-[:ADDRESSED_BY]->(intv:Intervention)-[:USES]->(rb)
+        WHERE inc.id IN $incident_ids
+        OPTIONAL MATCH (intv)-[:VALIDATED_BY]->(out:Outcome)
+        RETURN rb.id AS id,
+               rb.title AS title,
+               rb.description AS description,
+               rb.action_class AS action_class,
+               rb.assumes AS assumes,
+               collect(DISTINCT s.name) AS assumed_services,
+               rb.success_count AS success_count,
+               rb.fail_count AS fail_count,
+               rb.historical_success_rate AS rate,
+               collect(DISTINCT out.observed) AS recalled_outcomes
+        """
+        params = {"incident_ids": inc_list}
+    else:
+        cypher = """
+        MATCH (rb:Runbook)
+        OPTIONAL MATCH (rb)-[:ASSUMES]->(s:Service)
+        RETURN rb.id AS id,
+               rb.title AS title,
+               rb.description AS description,
+               rb.action_class AS action_class,
+               rb.assumes AS assumes,
+               collect(DISTINCT s.name) AS assumed_services,
+               rb.success_count AS success_count,
+               rb.fail_count AS fail_count,
+               rb.historical_success_rate AS rate,
+               [] AS recalled_outcomes
+        """
+        params = {}
+
+    res = graph.query(cypher, params)
     duration_ms = (time.time() - start_time) * 1000.0
 
     visited_nodes: set[str] = set()
@@ -120,7 +144,7 @@ def rank_runbooks(
 
     if res and res.result_set:
         for row in res.result_set:
-            rb_id, title, desc, action_class, assumes_pairs, assumed_svcs, s_cnt, f_cnt, rate = row
+            rb_id, title, desc, action_class, assumes_pairs, assumed_svcs, s_cnt, f_cnt, rate, recalled_outcomes = row
             visited_nodes.add(rb_id)
 
             successes = float(s_cnt or 0.0)
@@ -134,8 +158,16 @@ def rank_runbooks(
             else:
                 service_relevance = 1.0
 
-            # Composite ranking score: 75% Laplace rate + 25% target service overlap
-            composite_score = round((0.75 * laplace_rate) + (0.25 * service_relevance), 4)
+            # Procedural memory boost from recalled incident outcomes
+            recalled_bonus = 0.0
+            recalled_set = set(recalled_outcomes or [])
+            if "resolved" in recalled_set:
+                recalled_bonus += 2.0  # Proven resolution in similar past incident
+            if "failed" in recalled_set:
+                recalled_bonus -= 3.0  # Known failed fix for similar fault
+
+            # Composite ranking score: 75% Laplace rate + 25% target service overlap + empirical recalled outcome bonus
+            composite_score = round((0.75 * laplace_rate) + (0.25 * service_relevance) + recalled_bonus, 4)
 
             ranked_rbs.append({
                 "runbook_id": rb_id,
@@ -148,9 +180,11 @@ def rank_runbooks(
                 "fail_count": failures,
                 "historical_success_rate": laplace_rate,
                 "ranking_score": composite_score,
+                "recalled_outcomes": list(recalled_set),
             })
 
     ranked_rbs.sort(key=lambda x: (x["ranking_score"], x["historical_success_rate"]), reverse=True)
+
 
     summary = (
         f"Ranked {len(ranked_rbs)} runbooks by observed procedural success rate. "

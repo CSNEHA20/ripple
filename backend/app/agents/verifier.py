@@ -70,25 +70,69 @@ class VerifierAgent:
         if task_id:
             update_task_status(graph, task_id, "in_progress")
 
-        # 2. Check post-intervention metrics via real telemetry adapter or simulator
+        # 2. Check post-intervention metrics via real telemetry adapter polling window
         observed = "resolved"
         metrics_after = {}
         explanation = "Service returned to normal operating parameters."
 
+        from app.adapters.resolver import get_adapter
         from app.adapters.demo_target import get_demo_target_state
-        from app.adapters.prometheus import PrometheusAdapter
+        from app.config import settings
+
+        # Query baseline metrics prior to action from graph
+        base_cypher = """
+        MATCH (s:Service {name: $svc})-[:HAD_METRIC]->(m:MetricSnapshot)
+        RETURN m.latency_p95_ms, m.error_rate ORDER BY m.ts DESC LIMIT 1
+        """
+        base_res = graph.query(base_cypher, {"svc": target_service})
+        base_lat = float(base_res.result_set[0][0]) if (base_res and base_res.result_set) else 25.0
+        base_err = float(base_res.result_set[0][1]) if (base_res and base_res.result_set) else 0.0
 
         demo_state = get_demo_target_state().get(target_service.lower(), {})
-        if settings.telemetry_source == "prometheus" or (demo_state and demo_state.get("broken")):
-            prom_adapter = PrometheusAdapter()
-            post_metric = prom_adapter.check_health(target_service, ref_ts=ref_ts)
-            if post_metric.status == "failing" or post_metric.error_rate > 0.15:
-                observed = "failed"
-                explanation = f"Post-fix error rate remained high ({post_metric.error_rate:.1%}) after {runbook_id}."
-            else:
+        if settings.telemetry_source in ("prometheus", "demo_target") or (demo_state and demo_state.get("broken") is not None):
+            from app.agents.orchestrator import event_bus
+            adapter = get_adapter(graph.tenant_id)
+            samples = []
+            for sample_idx in range(1, 4):
+                time.sleep(0.05)
+                rec = adapter.check_health(target_service, ref_ts=ref_ts)
+                s_data = {
+                    "sample": sample_idx,
+                    "service": target_service,
+                    "latency_p95_ms": rec.latency_p95_ms,
+                    "error_rate": rec.error_rate,
+                    "status": rec.status,
+                    "source": rec.source,
+                    "ts": rec.ts,
+                }
+                samples.append(s_data)
+                try:
+                    event_bus.publish(incident_id, "verification_sample", s_data)
+                except Exception:
+                    pass
+
+            mean_err = sum(s["error_rate"] for s in samples) / len(samples)
+            mean_lat = sum(s["latency_p95_ms"] for s in samples) / len(samples)
+
+            if mean_err <= 0.02 and mean_lat <= 500.0:
                 observed = "resolved"
-                explanation = f"Post-fix metrics normalized: latency {post_metric.latency_p95_ms}ms, 0% errors."
-            metrics_after = post_metric.model_dump()
+                explanation = f"Service health normalized across {len(samples)} validation samples: error rate dropped to {mean_err:.1%} (baseline: {base_err:.1%}), p95 latency stabilized at {mean_lat:.1f}ms."
+            elif mean_err >= 0.15 or mean_lat >= 1500.0:
+                observed = "failed"
+                explanation = f"Intervention failed to restore service: error rate remained elevated at {mean_err:.1%} across {len(samples)} validation samples (threshold: <2.0%)."
+            else:
+                observed = "partial"
+                explanation = f"Partial recovery observed across {len(samples)} validation samples: error rate decreased to {mean_err:.1%}, but p95 latency remains degraded at {mean_lat:.1f}ms."
+
+            metrics_after = {
+                "samples": samples,
+                "samples_count": len(samples),
+                "baseline_latency_p95": base_lat,
+                "baseline_error_rate": base_err,
+                "observed_latency_p95": round(mean_lat, 2),
+                "observed_error_rate": round(mean_err, 4),
+                "source": samples[0]["source"],
+            }
         elif scenario_id:
             try:
                 sim_result = sim_apply_intervention(scenario_id=scenario_id, runbook_id=runbook_id)
@@ -97,6 +141,7 @@ class VerifierAgent:
                 explanation = sim_result.get("explanation", explanation)
             except Exception as e:
                 logger.warning(f"Simulator apply_intervention error: {e}. Defaulting to resolved.")
+
 
         # 3. Record observed Outcome in graph memory
         outcome_record = None

@@ -122,7 +122,7 @@ def run_single_scenario_benchmark(
 
     # 4. Run the 4-agent crew
     start_time = time.time()
-    orchestrator = IncidentOrchestrator(mode=mode)
+    orchestrator = IncidentOrchestrator(mode=mode, memory_enabled=(memory_mode == "memory_on"))
     crew_result, trace = orchestrator.run_crew(
         graph=graph,
         alert=alert,

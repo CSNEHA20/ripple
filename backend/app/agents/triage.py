@@ -39,10 +39,11 @@ class TriageAgent:
     - Creates an 'investigate' Task in the graph with handoff to the Investigator.
     """
 
-    def __init__(self, mode: str = "replay"):
+    def __init__(self, mode: str = "replay", memory_enabled: bool = True):
         self.agent_name = "Triage"
         self.role = "triage"
         self.mode = mode
+        self.memory_enabled = memory_enabled
         self.llm = LLMWrapper(mode=mode)
         self.tool_loop = ToolLoop(mode=mode)
 
@@ -94,8 +95,11 @@ class TriageAgent:
             severity = "P3"
 
         # 5. Tool 3: memory recall
-        recall_res, recall_trace = recall(graph, alert_text=alert_text, services=[service_name] + impacted_svcs, as_of=ref_ts)
-        trace.merge(recall_trace)
+        if self.memory_enabled:
+            recall_res, recall_trace = recall(graph, alert_text=alert_text, services=[service_name] + impacted_svcs, as_of=ref_ts)
+            trace.merge(recall_trace)
+        else:
+            recall_res = {"similar_incidents": [], "semantic_facts": [], "recommended_runbook": None}
 
         # 6. LLM synthesis with citation validation
         context = {

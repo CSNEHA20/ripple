@@ -117,7 +117,7 @@ Ripple was benchmarked across pre-registered scenarios with memory active vs dis
 | Metric | Memory ON | Memory OFF | Delta / Benefit |
 |---|---|---|---|
 | **Diagnosis Correctness** | **80.0%** | 80.0% | Grounded graph traversal |
-| **Recommendation Correctness** | **40.0%** | 40.0% | Prioritizes verified playbooks |
+| **Recommendation Correctness** | **60.0%** | 40.0% | +20.0% (memory recall + applicability unlocks correct alternative actions) |
 | **Unsafe Recommendation Rate** | **20.0%** | 20.0% | Blocks stale-fix traps via topology check |
 | **Average Tool Calls** | 37.2 | 35.6 | Deep multi-hop graph inspection |
 | **Average Execution Time** | 0.24s | 0.18s | In-memory FalkorDB latency |
@@ -146,6 +146,7 @@ Ripple exposes all 11 graph tools through a standard MCP server for external age
 
 ## 📚 Documentation Package
 
+- **Complete User & Operator Guide:** [`docs/ripple-user-guide.md`](file:///c:/Users/Lenovo/Downloads/Ripple/docs/ripple-user-guide.md)
 - **System Architecture & FalkorDB Blueprint:** [`docs/architecture.md`](file:///c:/Users/Lenovo/Downloads/Ripple/docs/architecture.md)
 - **Track & Requirements Mapping:** [`docs/track-mapping.md`](file:///c:/Users/Lenovo/Downloads/Ripple/docs/track-mapping.md)
 - **Interactive Demo Script:** [`docs/demo-script.md`](file:///c:/Users/Lenovo/Downloads/Ripple/docs/demo-script.md)

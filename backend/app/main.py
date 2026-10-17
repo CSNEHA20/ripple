@@ -76,16 +76,39 @@ class TenantMiddleware(BaseHTTPMiddleware):
 app.add_middleware(TenantMiddleware)
 
 
+from app.security import authenticate_api_key, require_role, check_alert_dedupe, verify_webhook_signature
+
+
+@app.on_event("startup")
+def validate_security_configuration():
+    """Fail closed in production if security configurations are missing."""
+    if settings.environment == "production":
+        if not settings.webhook_secret:
+            logger.critical("FATAL: webhook_secret must be configured when ENVIRONMENT=production.")
+            raise RuntimeError("FATAL: webhook_secret must be configured when ENVIRONMENT=production.")
+
+
 def get_current_tenant(
     request: Request,
-    x_tenant: Annotated[str | None, Header(description="Tenant ID header")] = None,
-    tenant: Annotated[str | None, Query(description="Tenant ID query param fallback")] = None,
+    auth: dict[str, Any] = Depends(authenticate_api_key),
 ) -> TenantGraph:
-    """Dependency to extract tenant from request state (populated by TenantMiddleware) or header/query fallback."""
-    if hasattr(request.state, "tenant_graph") and request.state.tenant_graph is not None:
-        return request.state.tenant_graph
-    target_tenant = sanitize_tenant_id(x_tenant or tenant or getattr(request.state, "tenant_id", "storefront"))
-    return TenantGraph(tenant_id=target_tenant)
+    """Dependency to extract tenant strictly authenticated via API key or validated session."""
+    target_tenant = sanitize_tenant_id(auth["tenant_id"])
+    request.state.tenant_id = target_tenant
+    request.state.auth = auth
+    try:
+        return TenantGraph(tenant_id=target_tenant)
+    except Exception:
+        class _OfflineTenantGraph:
+            def __init__(self, t_id: str):
+                self.tenant_id = t_id
+                self.graph_name = f"tenant_{t_id}"
+            def query(self, *args, **kwargs):
+                return None
+            def ping(self):
+                return False
+        return _OfflineTenantGraph(target_tenant)  # type: ignore
+
 
 
 @app.get("/health")
@@ -113,8 +136,11 @@ def health_check():
 
 @app.post("/tenants/{tenant_id}/bootstrap")
 @app.post("/api/tenants/{tenant_id}/bootstrap")
-def bootstrap_tenant(tenant_id: str):
-    """Idempotently bootstrap a tenant graph, ensure its schema indexes, and ingest baseline data."""
+def bootstrap_tenant(
+    tenant_id: str,
+    auth: dict[str, Any] = Depends(require_role("admin")),
+):
+    """Idempotently bootstrap a tenant graph, ensure its schema indexes, and ingest baseline data. Requires 'admin' role."""
     try:
         clean_id = sanitize_tenant_id(tenant_id)
         if clean_id == "payments":
@@ -149,15 +175,21 @@ def bootstrap_tenant(tenant_id: str):
 
 @app.post("/tenants/{tenant_id}/ingest")
 @app.post("/api/tenants/{tenant_id}/ingest")
-def ingest_tenant(tenant_id: str):
-    """Trigger full data ingestion for the specified tenant."""
-    return bootstrap_tenant(tenant_id)
+def ingest_tenant(
+    tenant_id: str,
+    auth: dict[str, Any] = Depends(require_role("admin")),
+):
+    """Trigger full data ingestion for the specified tenant. Requires 'admin' role."""
+    return bootstrap_tenant(tenant_id, auth=auth)
 
 
 @app.post("/tenants/{tenant_id}/reembed")
 @app.post("/api/tenants/{tenant_id}/reembed")
-def reembed_tenant(tenant_id: str):
-    """Recompute all Incident and Decision embeddings for the tenant graph with the active backend."""
+def reembed_tenant(
+    tenant_id: str,
+    auth: dict[str, Any] = Depends(require_role("admin")),
+):
+    """Recompute all Incident and Decision embeddings for the tenant graph with the active backend. Requires 'admin' role."""
     try:
         clean_id = sanitize_tenant_id(tenant_id)
         graph = TenantGraph(clean_id)
@@ -623,6 +655,7 @@ def api_get_incident_hypotheses(
                kind: e_sup.kind,
                summary: e_sup.summary,
                source_ref: e_sup.source_ref,
+               source: e_sup.source,
                observed_ts: e_sup.observed_ts,
                freshness: e_sup.freshness,
                weight: r_sup.weight
@@ -633,6 +666,7 @@ def api_get_incident_hypotheses(
                kind: e_con.kind,
                summary: e_con.summary,
                source_ref: e_con.source_ref,
+               source: e_con.source,
                observed_ts: e_con.observed_ts,
                freshness: e_con.freshness,
                weight: r_con.weight
@@ -1108,35 +1142,73 @@ async def api_stream_incident_events(
     )
 
 
-@app.post("/incidents/{incident_id}/actions/{action_id}/approve")
-@app.post("/api/incidents/{incident_id}/actions/{action_id}/approve")
+@app.post("/incidents/{incident_id}/actions/{action_id}/approve", status_code=202)
+@app.post("/api/incidents/{incident_id}/actions/{action_id}/approve", status_code=202)
 def api_approve_incident_action(
     incident_id: str,
     action_id: str,
+    background_tasks: BackgroundTasks,
     req: ActionApprovalRequest = ActionApprovalRequest(),
     graph: TenantGraph = Depends(get_current_tenant),
+    auth: dict[str, Any] = Depends(require_role("responder")),
+    sync: bool = Query(default=False, description="Run synchronously if True (for automated tests)"),
 ):
-    """Approve a proposed action awaiting human approval and resume the crew by running the Verifier Agent."""
-    try:
-        orchestrator = IncidentOrchestrator(mode="replay")
-        result, trace = orchestrator.approve_and_verify(
-            graph=graph,
-            incident_id=incident_id,
-            action_id=action_id,
-            approver=req.approver,
-            scenario_id=req.scenario_id,
-            as_of=req.as_of,
-        )
-        return {
-            "status": "success",
-            "data": result,
-            "trace": trace.to_dict(),
-        }
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        logger.error(f"Action approval failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Action approval failed: {str(e)}")
+    """Approve a proposed action awaiting human approval and resume the crew by running the Verifier Agent.
+    Returns 202 Accepted and runs execution + verification asynchronously in background tasks, streaming events.
+    Strictly requires 'responder' or 'admin' role.
+    """
+    mode = "live" if (settings.openai_api_key or settings.gemini_api_key or settings.anthropic_api_key) else "replay"
+    effective_approver = req.approver if req.approver and req.approver != "operator" else (auth.get("name") or auth.get("tenant_id") + "_responder")
+
+    if sync:
+        try:
+            orchestrator = IncidentOrchestrator(mode=mode)
+            result, trace = orchestrator.approve_and_verify(
+                graph=graph,
+                incident_id=incident_id,
+                action_id=action_id,
+                approver=effective_approver,
+                scenario_id=req.scenario_id,
+                as_of=req.as_of,
+            )
+            return {
+                "status": "success",
+                "data": result,
+                "trace": trace.to_dict(),
+            }
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        except Exception as e:
+            logger.error(f"Action approval failed: {e}")
+            raise HTTPException(status_code=500, detail=f"Action approval failed: {str(e)}")
+
+    def _async_approve_task():
+        try:
+            orchestrator = IncidentOrchestrator(mode=mode)
+            orchestrator.approve_and_verify(
+                graph=graph,
+                incident_id=incident_id,
+                action_id=action_id,
+                approver=effective_approver,
+                scenario_id=req.scenario_id,
+                as_of=req.as_of,
+            )
+        except Exception as e:
+            logger.error(f"Background action approval/verification failed: {e}")
+
+    background_tasks.add_task(_async_approve_task)
+
+    return JSONResponse(
+        status_code=202,
+        content={
+            "status": "accepted",
+            "message": f"Action '{action_id}' approval accepted; execution and verification running in background.",
+            "incident_id": incident_id,
+            "action_id": action_id,
+            "approver": effective_approver,
+        },
+    )
+
 
 
 @app.post("/incidents/{incident_id}/actions/{action_id}/reject")
@@ -1146,8 +1218,9 @@ def api_reject_incident_action(
     action_id: str,
     req: ActionRejectionRequest = ActionRejectionRequest(),
     graph: TenantGraph = Depends(get_current_tenant),
+    auth: dict[str, Any] = Depends(require_role("responder")),
 ):
-    """Reject a proposed action awaiting human approval."""
+    """Reject a proposed action awaiting human approval. Strictly requires 'responder' or 'admin' role."""
     try:
         res = reject_agent_action(
             graph=graph,
@@ -1546,10 +1619,12 @@ from app.adapters.topology import discover_topology_from_environment, apply_disc
 
 
 @app.get("/metrics")
+@app.get("/api/telemetry/demo/metrics")
 def api_prometheus_metrics():
     """Prometheus exposition format endpoint exposing live metrics for all services."""
     text = generate_prometheus_metrics_text()
     return PlainTextResponse(text, media_type="text/plain; version=0.0.4; charset=utf-8")
+
 
 
 @app.post("/api/telemetry/demo/break")
@@ -1582,8 +1657,9 @@ def api_get_demo_service_state(
 @app.post("/api/github/sync")
 def api_github_sync(
     graph: TenantGraph = Depends(get_current_tenant),
+    auth: dict[str, Any] = Depends(require_role("admin")),
 ):
-    """Trigger live GitHub repository synchronization."""
+    """Trigger live GitHub repository synchronization. Requires 'admin' role."""
     repo = settings.github_repo
     token = settings.github_token
     real_data = fetch_real_github_api(repo=repo, token=token) if token else None
@@ -1598,31 +1674,191 @@ def api_github_sync(
 
 @app.post("/api/topology/discover")
 def api_discover_topology(
+    manifest_path: str | None = Query(default=None, description="Optional path to target manifest/compose file"),
     graph: TenantGraph = Depends(get_current_tenant),
+    auth: dict[str, Any] = Depends(require_role("admin")),
 ):
-    """Discover topology from environment and container declarations, updating tenant graph."""
-    edges = discover_topology_from_environment()
+    """Discover topology from monitored target application manifests, updating tenant graph. Requires 'admin' role."""
+    edges = discover_topology_from_environment(manifest_path)
     apply_discovered_topology(graph, edges)
     return {
         "status": "success",
         "discovered_edges_count": len(edges),
         "edges": [
-            {"source": e.source_service, "target": e.target_service, "protocol": e.protocol}
+            {"caller": e.caller, "callee": e.callee, "protocol": e.protocol, "source": e.source}
             for e in edges
         ],
     }
 
 
+class IntegrationSettingsUpdate(BaseModel):
+    github_repo: str | None = None
+    slack_webhook_url: str | None = None
+    prometheus_url: str | None = None
+    telemetry_source: str | None = None
+    dry_run_default: bool | None = None
+
+
+# Tenant-scoped in-memory integration configuration store
+_TENANT_INTEGRATIONS: dict[str, dict[str, Any]] = {}
+
+
+@app.get("/api/integrations/settings")
+def api_get_integration_settings(
+    graph: TenantGraph = Depends(get_current_tenant),
+):
+    """Retrieve integration settings for active tenant."""
+    tenant = graph.tenant_id
+    stored = _TENANT_INTEGRATIONS.get(tenant, {})
+    return {
+        "tenant_id": tenant,
+        "github_repo": stored.get("github_repo") or settings.github_repo,
+        "github_configured": bool(settings.github_token and (stored.get("github_repo") or settings.github_repo)),
+        "slack_configured": bool(stored.get("slack_webhook_url") or settings.slack_webhook_url),
+        "prometheus_url": stored.get("prometheus_url") or settings.prometheus_url,
+        "telemetry_source": stored.get("telemetry_source") or settings.telemetry_source,
+        "dry_run_default": stored.get("dry_run_default", False),
+    }
+
+
+@app.post("/api/integrations/settings")
+def api_update_integration_settings(
+    req: IntegrationSettingsUpdate,
+    graph: TenantGraph = Depends(get_current_tenant),
+    auth: dict[str, Any] = Depends(require_role("admin")),
+):
+    """Update integration settings for active tenant. Requires 'admin' role."""
+    tenant = graph.tenant_id
+    if tenant not in _TENANT_INTEGRATIONS:
+        _TENANT_INTEGRATIONS[tenant] = {}
+
+    if req.github_repo is not None:
+        _TENANT_INTEGRATIONS[tenant]["github_repo"] = req.github_repo
+    if req.slack_webhook_url is not None:
+        _TENANT_INTEGRATIONS[tenant]["slack_webhook_url"] = req.slack_webhook_url
+    if req.prometheus_url is not None:
+        _TENANT_INTEGRATIONS[tenant]["prometheus_url"] = req.prometheus_url
+    if req.telemetry_source is not None:
+        _TENANT_INTEGRATIONS[tenant]["telemetry_source"] = req.telemetry_source
+    if req.dry_run_default is not None:
+        _TENANT_INTEGRATIONS[tenant]["dry_run_default"] = req.dry_run_default
+
+    return {
+        "status": "success",
+        "tenant_id": tenant,
+        "settings": _TENANT_INTEGRATIONS[tenant],
+    }
+
+
+@app.get("/api/audit/logs")
+def api_get_audit_logs(
+    limit: int = Query(default=50, description="Max logs to return"),
+    graph: TenantGraph = Depends(get_current_tenant),
+):
+    """Retrieve immutable action execution audit logs for this tenant."""
+    cypher = """
+    MATCH (audit:AuditLog)
+    RETURN audit.idempotency_key AS idempotency_key,
+           audit.action_id AS action_id,
+           audit.incident_id AS incident_id,
+           audit.action_kind AS action_kind,
+           audit.approver AS approver,
+           audit.executed_ts AS executed_ts,
+           audit.status AS status,
+           audit.audit_hash AS audit_hash,
+           audit.details AS details
+    ORDER BY audit.executed_ts DESC LIMIT $limit
+    """
+    try:
+        res = graph.query(cypher, {"limit": limit})
+        logs = []
+        if res and res.result_set:
+            for row in res.result_set:
+                details = json.loads(row[8]) if row[8] else {}
+                logs.append({
+                    "idempotency_key": row[0],
+                    "action_id": row[1],
+                    "incident_id": row[2],
+                    "action_kind": row[3],
+                    "approver": row[4],
+                    "executed_ts": row[5],
+                    "status": row[6],
+                    "audit_hash": row[7],
+                    "details": details,
+                })
+        return {"status": "success", "audit_logs": logs, "count": len(logs)}
+    except Exception as e:
+        logger.warning(f"Failed to query audit logs: {e}")
+        return {"status": "success", "audit_logs": [], "count": 0}
+
+
+@app.get("/api/incidents/{incident_id}/audit")
+def api_get_incident_audit(
+    incident_id: str,
+    graph: TenantGraph = Depends(get_current_tenant),
+):
+    """Retrieve audit logs for a specific incident."""
+    cypher = """
+    MATCH (audit:AuditLog {incident_id: $iid})
+    RETURN audit.idempotency_key AS idempotency_key,
+           audit.action_id AS action_id,
+           audit.action_kind AS action_kind,
+           audit.approver AS approver,
+           audit.executed_ts AS executed_ts,
+           audit.status AS status,
+           audit.audit_hash AS audit_hash,
+           audit.details AS details
+    ORDER BY audit.executed_ts ASC
+    """
+    try:
+        res = graph.query(cypher, {"iid": incident_id})
+        logs = []
+        if res and res.result_set:
+            for row in res.result_set:
+                details = json.loads(row[7]) if row[7] else {}
+                logs.append({
+                    "idempotency_key": row[0],
+                    "action_id": row[1],
+                    "action_kind": row[2],
+                    "approver": row[3],
+                    "executed_ts": row[4],
+                    "status": row[5],
+                    "audit_hash": row[6],
+                    "details": details,
+                })
+        return {"status": "success", "incident_id": incident_id, "audit_records": logs}
+    except Exception as e:
+        logger.warning(f"Failed to query incident audit logs: {e}")
+        return {"status": "success", "incident_id": incident_id, "audit_records": []}
+
+
 @app.get("/api/system/status")
 def api_system_status():
-    """System status and LLM provider health check."""
+    """System status and complete observability data-health status."""
     llm_status = "live" if settings.openai_api_key or settings.gemini_api_key or settings.anthropic_api_key else "degraded"
+    falkor_status = "disconnected"
+    try:
+        client = get_falkordb_client()
+        demo_graph = TenantGraph("storefront", db=client)
+        if demo_graph.ping():
+            falkor_status = "connected"
+    except Exception:
+        falkor_status = "disconnected"
+
     return {
-        "llm_provider": settings.llm_provider,
+        "status": "ok",
+        "service": "ripple-backend",
+        "version": "0.1.0",
+        "environment": settings.environment,
+        "falkordb": falkor_status,
+        "llm_provider": settings.llm_provider or "deterministic_fallback",
         "llm_status": llm_status,
         "telemetry_source": settings.telemetry_source,
         "embeddings_backend": settings.embeddings_backend,
+        "github_configured": bool(settings.github_token and settings.github_repo),
         "github_repo": settings.github_repo,
+        "slack_configured": bool(settings.slack_webhook_url),
+        "prometheus_url": settings.prometheus_url,
     }
 
 

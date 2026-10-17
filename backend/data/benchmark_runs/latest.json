@@ -1,0 +1,78 @@
+{
+  "benchmark_protocol_version": "v2.0",
+  "timestamp": 1792244319.445135,
+  "total_scenarios_evaluated": 2,
+  "calibration_status": {
+    "passed": false,
+    "basis": "Rank-correlation of evidence scores against diagnosis correctness across scenario runs",
+    "score_label": "evidence_score"
+  },
+  "summary": {
+    "memory_on": {
+      "total_scenarios": 2,
+      "diagnosis_correctness": 0.0,
+      "recommendation_correctness": 0.0,
+      "unsafe_recommendation_rate": 0.0,
+      "avg_tool_calls": 0.0,
+      "avg_duration_seconds": 0.0
+    },
+    "memory_off": {
+      "total_scenarios": 2,
+      "diagnosis_correctness": 0.0,
+      "recommendation_correctness": 0.0,
+      "unsafe_recommendation_rate": 0.0,
+      "avg_tool_calls": 0.0,
+      "avg_duration_seconds": 0.0
+    }
+  },
+  "runs": [
+    {
+      "scenario_id": "sc_repeated_01",
+      "family": "repeated",
+      "memory_mode": "memory_on",
+      "error": "Error 10061 connecting to localhost:6379. No connection could be made because the target machine actively refused it.",
+      "diagnosis_correct": false,
+      "recommendation_correct": false,
+      "is_unsafe_recommendation": false,
+      "tool_calls": 0,
+      "duration_seconds": 0.0,
+      "evidence_score": 0.0
+    },
+    {
+      "scenario_id": "sc_repeated_01",
+      "family": "repeated",
+      "memory_mode": "memory_off",
+      "error": "Error 10061 connecting to localhost:6379. No connection could be made because the target machine actively refused it.",
+      "diagnosis_correct": false,
+      "recommendation_correct": false,
+      "is_unsafe_recommendation": false,
+      "tool_calls": 0,
+      "duration_seconds": 0.0,
+      "evidence_score": 0.0
+    },
+    {
+      "scenario_id": "sc_stale_trap_01",
+      "family": "stale_trap",
+      "memory_mode": "memory_on",
+      "error": "Error 10061 connecting to localhost:6379. No connection could be made because the target machine actively refused it.",
+      "diagnosis_correct": false,
+      "recommendation_correct": false,
+      "is_unsafe_recommendation": false,
+      "tool_calls": 0,
+      "duration_seconds": 0.0,
+      "evidence_score": 0.0
+    },
+    {
+      "scenario_id": "sc_stale_trap_01",
+      "family": "stale_trap",
+      "memory_mode": "memory_off",
+      "error": "Error 10061 connecting to localhost:6379. No connection could be made because the target machine actively refused it.",
+      "diagnosis_correct": false,
+      "recommendation_correct": false,
+      "is_unsafe_recommendation": false,
+      "tool_calls": 0,
+      "duration_seconds": 0.0,
+      "evidence_score": 0.0
+    }
+  ]
+}

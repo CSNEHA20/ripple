@@ -207,6 +207,7 @@ class InvestigatorAgent:
                 for m in t_res.get("metrics", []):
                     svc = m.get("service")
                     st = m.get("status", "normal")
+                    m_src = m.get("source", "demo_target")
                     for h in scored_hyps:
                         if h.get("service") == svc:
                             polarity = "support" if st in ("failing", "degraded") else "contradict"
@@ -223,7 +224,7 @@ class InvestigatorAgent:
                                 "observed_ts": float(m.get("ts", ref_ts)),
                                 "freshness": 1.0,
                                 "weight": 3.0,
-                                "source": "real",
+                                "source": m_src,
                             }
                             if polarity == "support":
                                 evidence_by_hyp_id[h["id"]]["supporting"].append(new_ev)
@@ -236,6 +237,7 @@ class InvestigatorAgent:
                 for h in scored_hyps:
                     if h.get("service") == svc and deploys:
                         dep = deploys[0]
+                        dep_src = dep.get("source", "synthetic")
                         ev_id = f"ev_tool_{h['id']}_dep_{len(evidence_by_hyp_id[h['id']]['supporting'])+1}"
                         new_ev = {
                             "id": ev_id,
@@ -249,16 +251,87 @@ class InvestigatorAgent:
                             "observed_ts": float(dep.get("ts", ref_ts)),
                             "freshness": 1.0,
                             "weight": 2.5,
-                            "source": "real",
+                            "source": dep_src,
                         }
                         evidence_by_hyp_id[h["id"]]["supporting"].append(new_ev)
                         tool_ev_added = True
+            elif t_name == "path_between" and isinstance(t_res, dict):
+                if t_res.get("path_exists"):
+                    callee = t_res.get("callee")
+                    for h in scored_hyps:
+                        if h.get("service") == callee:
+                            topo_source = t_res.get("source") or ("discovered" if t_res.get("unverified_count", 0) == 0 else "seeded")
+                            ev_id = f"ev_tool_{h['id']}_path_{len(evidence_by_hyp_id[h['id']]['supporting'])+1}"
+                            new_ev = {
+                                "id": ev_id,
+                                "hypothesis_id": h["id"],
+                                "service": callee,
+                                "type": "dependency_path",
+                                "kind": "observed",
+                                "polarity": "support",
+                                "summary": f"Graph verified active dependency path from alert origin to '{callee}'.",
+                                "source_ref": "path_between_tool",
+                                "observed_ts": ref_ts,
+                                "freshness": 1.0,
+                                "weight": 1.5,
+                                "source": topo_source,
+                            }
+                            evidence_by_hyp_id[h["id"]]["supporting"].append(new_ev)
+                            tool_ev_added = True
+            elif t_name == "upstream_suspects" and isinstance(t_res, dict):
+                suspects = t_res.get("suspects", [])
+                for s in suspects:
+                    s_name = s.get("service")
+                    for h in scored_hyps:
+                        if h.get("service") == s_name:
+                            topo_source = s.get("source") or "discovered"
+                            ev_id = f"ev_tool_{h['id']}_upstream_{len(evidence_by_hyp_id[h['id']]['supporting'])+1}"
+                            new_ev = {
+                                "id": ev_id,
+                                "hypothesis_id": h["id"],
+                                "service": s_name,
+                                "type": "dependency_path",
+                                "kind": "observed",
+                                "polarity": "support",
+                                "summary": f"Topological upstream suspect '{s_name}' identified at depth {s.get('depth', 1)}.",
+                                "source_ref": "upstream_suspects_tool",
+                                "observed_ts": ref_ts,
+                                "freshness": 1.0,
+                                "weight": 1.5,
+                                "source": topo_source,
+                            }
+                            evidence_by_hyp_id[h["id"]]["supporting"].append(new_ev)
+                            tool_ev_added = True
+            elif t_name == "similar_incidents" and isinstance(t_res, dict):
+                matches = t_res.get("matches", [])
+                for m in matches:
+                    if m.get("similarity_score", 0) >= 0.4:
+                        for h in scored_hyps:
+                            if h.get("service") in str(m.get("affected_services", [])):
+                                ev_id = f"ev_tool_{h['id']}_sim_{len(evidence_by_hyp_id[h['id']]['supporting'])+1}"
+                                new_ev = {
+                                    "id": ev_id,
+                                    "hypothesis_id": h["id"],
+                                    "service": h.get("service"),
+                                    "type": "past_incident",
+                                    "kind": "inferred",
+                                    "polarity": "support",
+                                    "summary": f"Corroborated by similar past incident {m.get('incident_id')} ({m.get('similarity_score', 0):.2f} similarity).",
+                                    "source_ref": m.get("incident_id", "sim_inc"),
+                                    "observed_ts": ref_ts,
+                                    "freshness": 1.0,
+                                    "weight": 2.0,
+                                    "source": m.get("source", "seeded"),
+                                }
+                                evidence_by_hyp_id[h["id"]]["supporting"].append(new_ev)
+                                tool_ev_added = True
 
         if tool_ev_added:
             from app.hypotheses.score import score_hypotheses
             scored_hyps, re_trace = score_hypotheses(scored_hyps, evidence_by_hyp_id, as_of=ref_ts)
             trace.merge(re_trace)
             top_hyp = scored_hyps[0] if scored_hyps else None
+
 
         # 5. Record Observation on blackboard
         obs = record_agent_observation(

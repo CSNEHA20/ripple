@@ -11,6 +11,9 @@ from app.actions.executors.base import ActionExecutor, ExecutionReceipt
 logger = logging.getLogger("ripple.actions.executors.slack")
 
 
+_SLACK_EXECUTED_KEYS: set[str] = set()
+
+
 class SlackActionExecutor(ActionExecutor):
     """Executes notifications and interactive alerts to Slack channels via incoming webhooks."""
 
@@ -32,6 +35,25 @@ class SlackActionExecutor(ActionExecutor):
         audit_content = f"{idempotency_key}:{approver}:{now_ts}"
         audit_hash = hashlib.sha256(audit_content.encode()).hexdigest()
 
+        # 1. Enforce persisted graph & in-memory idempotency across restarts
+        if not dry_run:
+            persisted = self.check_persisted_idempotency(graph, idempotency_key)
+            if persisted:
+                return persisted
+            if idempotency_key in _SLACK_EXECUTED_KEYS:
+                return ExecutionReceipt(
+                    idempotency_key=idempotency_key,
+                    action_id=action_id,
+                    incident_id=incident_id,
+                    action_kind=action_kind,
+                    approver=approver,
+                    executed_ts=now_ts,
+                    status="idempotent_skip",
+                    details={"message": f"Slack notification with key {idempotency_key} already sent. Skipping duplicate."},
+                    audit_hash=audit_hash,
+                )
+            _SLACK_EXECUTED_KEYS.add(idempotency_key)
+
         status = "executed"
         details: dict[str, Any] = {"channel": "on-call-alerts", "action_kind": action_kind}
 
@@ -39,6 +61,7 @@ class SlackActionExecutor(ActionExecutor):
             status = "dry_run" if dry_run else "executed (simulated: no SLACK_WEBHOOK_URL)"
             details["simulated"] = True
             logger.info(f"[SlackExecutor] Dry-run/simulated action {action_kind} for incident {incident_id}: {payload}")
+
         else:
             message_text = payload.get("text") or f"Ripple Alert: {action_kind} for incident {incident_id}"
             blocks = [

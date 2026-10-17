@@ -14,6 +14,12 @@ from app.adapters.demo_target import (
     generate_prometheus_metrics_text,
 )
 
+from app.adapters.resolver import (
+    get_adapter,
+    get_telemetry_adapter,
+    get_deployment_adapter,
+)
+
 __all__ = [
     "BaseTelemetryAdapter",
     "MetricRecord",
@@ -27,4 +33,8 @@ __all__ = [
     "restore_service",
     "get_demo_target_state",
     "generate_prometheus_metrics_text",
+    "get_adapter",
+    "get_telemetry_adapter",
+    "get_deployment_adapter",
 ]
+

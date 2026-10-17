@@ -37,6 +37,26 @@ def gather_evidence_for_hypotheses(
 
     # Pre-fetch candidate service health metrics in one call
     candidate_services = list({h["service"] for h in hypotheses})
+
+    # Pull fresh metrics from active telemetry adapter (Prometheus or Demo Target)
+    try:
+        from app.adapters.resolver import get_adapter
+        from app.scenarios.metrics import create_metric_snapshot
+        adapter = get_adapter(graph.tenant_id)
+        live_records = adapter.fetch_metrics(candidate_services, ref_ts=ref_ts)
+        for rec in live_records:
+            create_metric_snapshot(
+                graph=graph,
+                service_name=rec.service,
+                ts=rec.ts,
+                latency_p95_ms=rec.latency_p95_ms,
+                error_rate=rec.error_rate,
+                status=rec.status,
+                source=rec.source,
+            )
+    except Exception as e:
+        pass
+
     health_res = service_health(graph, services=candidate_services, ts=ref_ts)
     trace.merge(health_res.trace)
     health_map: dict[str, dict[str, Any]] = {
@@ -86,6 +106,7 @@ def gather_evidence_for_hypotheses(
             source_ref: str,
             observed_ts: float,
             kind: str = "observed",
+            source: str = "seeded",
         ) -> None:
             nonlocal total_evidence_count
             total_evidence_count += 1
@@ -112,11 +133,13 @@ def gather_evidence_for_hypotheses(
                 "observed_ts": observed_ts,
                 "freshness": freshness,
                 "weight": base_wt,
+                "source": source,
             }
             if polarity == "support":
                 supporting.append(ev)
             else:
                 contradicting.append(ev)
+
 
         # -------------------------------------------------------------
         # 1. Dependency Path Evidence
@@ -129,6 +152,7 @@ def gather_evidence_for_hypotheses(
                 source_ref=svc,
                 observed_ts=ref_ts,
                 kind="observed",
+                source="real",
             )
         elif hops < 99:
             add_ev(
@@ -138,6 +162,7 @@ def gather_evidence_for_hypotheses(
                 source_ref=f"{alerting_service}->{svc}",
                 observed_ts=ref_ts,
                 kind="observed",
+                source="real",
             )
         else:
             # Check via path_between tool if any path exists
@@ -152,6 +177,7 @@ def gather_evidence_for_hypotheses(
                     source_ref=f"{alerting_service}->{svc}",
                     observed_ts=ref_ts,
                     kind="observed",
+                    source="real",
                 )
             else:
                 add_ev(
@@ -161,6 +187,7 @@ def gather_evidence_for_hypotheses(
                     source_ref=f"{alerting_service}->{svc}",
                     observed_ts=ref_ts,
                     kind="observed",
+                    source="real",
                 )
 
         # -------------------------------------------------------------
@@ -174,6 +201,7 @@ def gather_evidence_for_hypotheses(
             dep_id = closest_deploy.get("id", f"dep_{svc}")
             dep_ver = closest_deploy.get("version", "latest")
             dep_ts = closest_deploy.get("ts", ref_ts)
+            dep_src = closest_deploy.get("source", "seeded")
 
             if hours_ago <= 6.0:
                 add_ev(
@@ -183,6 +211,7 @@ def gather_evidence_for_hypotheses(
                     source_ref=dep_id,
                     observed_ts=dep_ts,
                     kind="observed",
+                    source=dep_src,
                 )
             else:
                 add_ev(
@@ -192,6 +221,7 @@ def gather_evidence_for_hypotheses(
                     source_ref=dep_id,
                     observed_ts=dep_ts,
                     kind="observed",
+                    source=dep_src,
                 )
         else:
             if has_any_fresh_deploy:
@@ -202,6 +232,7 @@ def gather_evidence_for_hypotheses(
                     source_ref=svc,
                     observed_ts=ref_ts,
                     kind="observed",
+                    source="seeded",
                 )
 
         # -------------------------------------------------------------
@@ -214,6 +245,7 @@ def gather_evidence_for_hypotheses(
             snap_ts = snap.get("ts", ref_ts)
             latency = snap.get("latency_p95_ms", 0.0)
             err_rate = snap.get("error_rate", 0.0)
+            snap_src = snap.get("source", "seeded")
 
             if status in ("failing", "degraded"):
                 add_ev(
@@ -223,6 +255,7 @@ def gather_evidence_for_hypotheses(
                     source_ref=snap_id,
                     observed_ts=snap_ts,
                     kind="observed",
+                    source=snap_src,
                 )
             else:
                 add_ev(
@@ -232,7 +265,9 @@ def gather_evidence_for_hypotheses(
                     source_ref=snap_id,
                     observed_ts=snap_ts,
                     kind="observed",
+                    source=snap_src,
                 )
+
 
         # -------------------------------------------------------------
         # 4. Past Incident Memory Evidence

@@ -156,11 +156,12 @@ class IncidentOrchestrator:
     6. Verifier Phase -> VerifierAgent -> verify metrics, record Outcome, close episodic memory
     """
 
-    def __init__(self, mode: str = "replay"):
+    def __init__(self, mode: str = "replay", memory_enabled: bool = True):
         self.mode = mode
-        self.triage_agent = TriageAgent(mode=mode)
+        self.memory_enabled = memory_enabled
+        self.triage_agent = TriageAgent(mode=mode, memory_enabled=memory_enabled)
         self.investigator_agent = InvestigatorAgent(mode=mode)
-        self.responder_agent = ResponderAgent(mode=mode)
+        self.responder_agent = ResponderAgent(mode=mode, memory_enabled=memory_enabled)
         self.verifier_agent = VerifierAgent(mode=mode)
 
     def run_crew(

@@ -44,18 +44,25 @@ class SandboxActionExecutor(ActionExecutor):
             "dry_run": dry_run,
         }
 
-        if key in _EXECUTED_KEYS and not dry_run:
-            return ExecutionReceipt(
-                idempotency_key=key,
-                action_id=action_id,
-                incident_id=incident_id,
-                action_kind=action_kind,
-                approver=approver,
-                executed_ts=now_ts,
-                status="idempotent_skip",
-                details={"message": f"Action with key {key} already executed. Skipping."},
-                audit_hash=audit_hash,
-            )
+        if not dry_run:
+            # 1. Check persistent graph idempotency
+            persisted = self.check_persisted_idempotency(graph, key)
+            if persisted:
+                return persisted
+
+            # 2. Check in-memory idempotency
+            if key in _EXECUTED_KEYS:
+                return ExecutionReceipt(
+                    idempotency_key=key,
+                    action_id=action_id,
+                    incident_id=incident_id,
+                    action_kind=action_kind,
+                    approver=approver,
+                    executed_ts=now_ts,
+                    status="idempotent_skip",
+                    details={"message": f"Action with key {key} already executed. Skipping."},
+                    audit_hash=audit_hash,
+                )
 
         _EXECUTED_KEYS.add(key)
 
@@ -64,11 +71,25 @@ class SandboxActionExecutor(ActionExecutor):
             details["message"] = f"Dry-run simulation for {action_kind} on {target_service} succeeded. No state changed."
         else:
             status = "executed"
-            details["message"] = f"Action {action_kind} successfully executed on {target_service} using {runbook_id}."
-            logger.info(f"[SandboxExecutor] Executed {action_kind} for {target_service} approved by {approver}.")
+            from app.adapters.demo_target import restore_service
+            # Healing rule: rollback or restart heals the demo target service
+            if action_kind in ("rollback", "restart", "rollback_deployment", "restart_service", "apply_hotfix"):
+                if target_service and target_service != "unknown":
+                    restore_service(target_service)
+                    details["healed"] = True
+                    details["message"] = f"Action {action_kind} executed: healed target service '{target_service}' to normal."
+                    logger.info(f"[SandboxExecutor] Executed {action_kind} and restored demo service '{target_service}'.")
+                else:
+                    details["healed"] = False
+                    details["message"] = f"Action {action_kind} executed without a known target service."
+            else:
+                # Wrong fix does not heal the broken service!
+                details["healed"] = False
+                details["message"] = f"Action {action_kind} executed on {target_service}, but fault condition was not resolved by this action."
+                logger.info(f"[SandboxExecutor] Executed wrong/non-healing action {action_kind} on {target_service}.")
 
         receipt = ExecutionReceipt(
-            idempotency_key=idempotency_key,
+            idempotency_key=key,
             action_id=action_id,
             incident_id=incident_id,
             action_kind=action_kind,
@@ -80,3 +101,4 @@ class SandboxActionExecutor(ActionExecutor):
         )
         self.record_audit_log(graph, receipt)
         return receipt
+
