@@ -19,6 +19,7 @@ logger = logging.getLogger("ripple.agents.orchestrator")
 
 import os
 from app.config import settings
+from app.notifications.service import notify_incident_event
 
 EVENTS_PERSIST_DIR = os.path.join(
     os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
@@ -28,13 +29,15 @@ EVENTS_PERSIST_DIR = os.path.join(
 
 
 class IncidentEventBus:
-    """Pub/sub event bus with in-memory fan-out and disk persistence for live SSE streaming."""
+    """Pub/sub event bus with in-memory fan-out, sequence tracking, and disk persistence for live SSE streaming."""
 
     def __init__(self):
         # incident_id -> list of asyncio.Queue
         self._subscribers: dict[str, list[asyncio.Queue]] = defaultdict(list)
         # Store event history per incident for catch-up on late subscriber connect
         self._history: dict[str, list[dict[str, Any]]] = defaultdict(list)
+        # Sequence counter per incident
+        self._seq: dict[str, int] = defaultdict(int)
         try:
             os.makedirs(EVENTS_PERSIST_DIR, exist_ok=True)
         except Exception:
@@ -65,8 +68,12 @@ class IncidentEventBus:
                 logger.warning(f"Failed to load persisted SSE events from {log_path}: {e}")
         return events
 
-    def publish(self, incident_id: str, event_type: str, data: dict[str, Any]) -> None:
+    def publish(self, incident_id: str, event_type: str, data: dict[str, Any]) -> dict[str, Any]:
+        self._seq[incident_id] += 1
+        seq = self._seq[incident_id]
         event = {
+            "id": f"{incident_id}_{seq}",
+            "seq": seq,
             "incident_id": incident_id,
             "event": event_type,
             "data": data,
@@ -80,8 +87,11 @@ class IncidentEventBus:
                 q.put_nowait(event)
             except Exception as e:
                 logger.warning(f"Error publishing SSE event to queue: {e}")
+        return event
 
-    async def subscribe(self, incident_id: str) -> AsyncGenerator[dict[str, Any], None]:
+    async def subscribe(
+        self, incident_id: str, last_event_id: str | None = None
+    ) -> AsyncGenerator[dict[str, Any], None]:
         q: asyncio.Queue = asyncio.Queue()
 
         # Replay past events from memory or disk
@@ -89,17 +99,42 @@ class IncidentEventBus:
         if not history:
             history = self._load_persisted_events(incident_id)
             self._history[incident_id] = history
+            if history:
+                self._seq[incident_id] = max((e.get("seq", 0) for e in history), default=0)
+
+        # Parse last_event_id to filter out already-received events
+        last_seq = 0
+        if last_event_id:
+            try:
+                if "_" in last_event_id:
+                    last_seq = int(last_event_id.split("_")[-1])
+                else:
+                    last_seq = int(last_event_id)
+            except Exception:
+                last_seq = 0
 
         for past_ev in history:
-            await q.put(past_ev)
+            if past_ev.get("seq", 0) > last_seq:
+                await q.put(past_ev)
 
         self._subscribers[incident_id].append(q)
         try:
             while True:
-                ev = await q.get()
-                yield ev
-                if ev.get("event") in ("incident_closed", "incident_failed"):
-                    break
+                try:
+                    ev = await asyncio.wait_for(q.get(), timeout=15.0)
+                    yield ev
+                    if ev.get("event") in ("incident_closed", "incident_failed"):
+                        break
+                except asyncio.TimeoutError:
+                    # 15s keepalive heartbeat ping
+                    yield {
+                        "id": f"{incident_id}_ping_{int(time.time())}",
+                        "seq": -1,
+                        "incident_id": incident_id,
+                        "event": "ping",
+                        "data": {"ts": time.time()},
+                        "ts": time.time(),
+                    }
         finally:
             if q in self._subscribers[incident_id]:
                 self._subscribers[incident_id].remove(q)
@@ -168,8 +203,10 @@ class IncidentOrchestrator:
             "service": service_name,
             "alert": alert,
         })
+        notify_incident_event(graph, "incident_opened", inc_id, {"service": service_name, "alert": alert})
 
         # Step 2: Triage Phase
+        graph.query("MATCH (i:Incident {id: $id}) SET i.status = 'triaging'", {"id": inc_id})
         event_bus.publish(inc_id, "agent_started", {"agent": "Triage", "role": "triage"})
         triage_out, triage_trace = self.triage_agent.run(
             graph=graph,
@@ -187,6 +224,7 @@ class IncidentOrchestrator:
         })
 
         # Step 3: Investigation Phase
+        graph.query("MATCH (i:Incident {id: $id}) SET i.status = 'investigating'", {"id": inc_id})
         event_bus.publish(inc_id, "agent_started", {"agent": "Investigator", "role": "investigator"})
         investigate_task = {
             "id": triage_out["task_id"],
@@ -226,6 +264,7 @@ class IncidentOrchestrator:
         })
 
         # Step 4: Response Phase
+        graph.query("MATCH (i:Incident {id: $id}) SET i.status = 'responding'", {"id": inc_id})
         event_bus.publish(inc_id, "agent_started", {"agent": "Responder", "role": "responder"})
         respond_task = {
             "id": inv_out["respond_task_id"],
@@ -270,6 +309,10 @@ class IncidentOrchestrator:
                 "runbook_id": resp_out.get("selected_runbook_id"),
                 "message": f"Remediation '{remediation_action['kind']}' requires human approval before execution.",
             })
+            notify_incident_event(graph, "approval_needed", inc_id, {
+                "action_id": remediation_action["id"],
+                "runbook_id": resp_out.get("selected_runbook_id"),
+            })
         else:
             # Auto-approve or non-destructive action: proceed to Verifier
             if remediation_action and remediation_action["status"] == "proposed":
@@ -277,6 +320,7 @@ class IncidentOrchestrator:
                 event_bus.publish(inc_id, "action_approved", {"action_id": remediation_action["id"]})
                 event_bus.publish(inc_id, "action_executed", {"action_id": remediation_action["id"]})
 
+            graph.query("MATCH (i:Incident {id: $id}) SET i.status = 'verifying'", {"id": inc_id})
             event_bus.publish(inc_id, "agent_started", {"agent": "Verifier", "role": "verifier"})
             verify_task = {
                 "id": resp_out["verify_task_id"],
@@ -295,6 +339,10 @@ class IncidentOrchestrator:
             )
             trace.merge(verifier_trace)
             final_status = verifier_out.get("status", "resolved")
+            graph.query(
+                "MATCH (i:Incident {id: $id}) SET i.status = $status, i.resolved_ts = $ts",
+                {"id": inc_id, "status": final_status, "ts": time.time()},
+            )
             event_bus.publish(inc_id, "outcome_verified", {
                 "observed_outcome": verifier_out["observed_outcome"],
                 "metrics_summary": verifier_out["metrics_summary"],
@@ -303,6 +351,10 @@ class IncidentOrchestrator:
                 "incident_id": inc_id,
                 "status": final_status,
                 "summary": verifier_out["summary"],
+            })
+            notify_incident_event(graph, "incident_closed", inc_id, {
+                "status": final_status,
+                "summary": verifier_out.get("summary", ""),
             })
 
         # Retrieve complete blackboard state from graph
@@ -353,6 +405,7 @@ class IncidentOrchestrator:
         payload = json.loads(payload_str) if payload_str else {}
 
         # 3. Run Verifier Agent
+        graph.query("MATCH (i:Incident {id: $id}) SET i.status = 'verifying'", {"id": incident_id})
         event_bus.publish(incident_id, "agent_started", {"agent": "Verifier", "role": "verifier"})
         verify_task = {"id": tid, "payload": payload}
         ver_out, ver_trace = self.verifier_agent.run(
@@ -365,6 +418,10 @@ class IncidentOrchestrator:
         trace.merge(ver_trace)
 
         status = ver_out.get("status", "resolved")
+        graph.query(
+            "MATCH (i:Incident {id: $id}) SET i.status = $status, i.resolved_ts = $ts",
+            {"id": incident_id, "status": status, "ts": time.time()},
+        )
         event_bus.publish(incident_id, "outcome_verified", {
             "observed_outcome": ver_out["observed_outcome"],
             "metrics_summary": ver_out["metrics_summary"],
@@ -373,6 +430,10 @@ class IncidentOrchestrator:
             "incident_id": incident_id,
             "status": status,
             "summary": ver_out["summary"],
+        })
+        notify_incident_event(graph, "incident_closed", incident_id, {
+            "status": status,
+            "summary": ver_out.get("summary", ""),
         })
 
         bb_state = get_blackboard_state(graph, incident_id)

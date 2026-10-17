@@ -1,0 +1,12 @@
+{
+  "top_cause": "Correlated subsystem anomaly in 'paymentservice' (recent_deployment).",
+  "top_service": "paymentservice",
+  "evidence_score": 0.71,
+  "margin": 1.65,
+  "summary": "Investigator ranked root cause as 'paymentservice' with evidence score 0.71 and margin 1.65 [ev_hyp_inc_f145e052_paymentservice_recent_deploy_support_2].",
+  "cited_evidence_ids": [
+    "ev_hyp_inc_f145e052_paymentservice_recent_deploy_support_2",
+    "ev_hyp_inc_f145e052_paymentservice_decision_support_3",
+    "ev_hyp_inc_f145e052_paymentservice_decision_support_4"
+  ]
+}

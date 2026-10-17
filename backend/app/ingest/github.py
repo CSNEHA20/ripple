@@ -203,23 +203,95 @@ def _generate_curated_issues() -> list[dict[str, Any]]:
     return issues
 
 
+def fetch_real_github_api(repo: str, token: str) -> dict[str, Any] | None:
+    """Attempt live GitHub REST API fetch for contributors, pull requests, and issues."""
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Accept": "application/vnd.github+json",
+        "User-Agent": "Ripple-Ingest-Agent",
+    }
+    base_url = f"https://api.github.com/repos/{repo}"
+    try:
+        import httpx
+        with httpx.Client(timeout=10.0) as client:
+            # 1. Contributors
+            contrib_resp = client.get(f"{base_url}/contributors?per_page=30", headers=headers)
+            if contrib_resp.status_code != 200:
+                logger.warning(f"GitHub API contributors failed: {contrib_resp.status_code}")
+                return None
+            contributors = [{"login": c["login"], "name": c.get("name") or c["login"]} for c in contrib_resp.json()]
+
+            # 2. Pull requests
+            pr_resp = client.get(f"{base_url}/pulls?state=all&per_page=40", headers=headers)
+            prs = []
+            if pr_resp.status_code == 200:
+                for p in pr_resp.json():
+                    prs.append({
+                        "number": p["number"],
+                        "title": p.get("title", ""),
+                        "body": p.get("body") or "",
+                        "author": p.get("user", {}).get("login", "unknown"),
+                        "service": "frontend",
+                        "merged_at": time.time(),
+                        "url": p.get("html_url", ""),
+                        "tag": "real_pr",
+                    })
+
+            # 3. Issues
+            issue_resp = client.get(f"{base_url}/issues?state=all&per_page=40", headers=headers)
+            issues = []
+            if issue_resp.status_code == 200:
+                for iss in issue_resp.json():
+                    if "pull_request" not in iss:
+                        issues.append({
+                            "number": iss["number"],
+                            "title": iss.get("title", ""),
+                            "body": iss.get("body") or "",
+                            "author": iss.get("user", {}).get("login", "unknown"),
+                            "service": "frontend",
+                            "state": iss.get("state", "open"),
+                            "created_at": time.time(),
+                            "url": iss.get("html_url", ""),
+                        })
+
+            return {
+                "source": "real",
+                "contributors": contributors or CONTRIBUTORS_DATA,
+                "service_commits": SERVICE_COMMITS_MAP,
+                "pull_requests": prs or _generate_curated_prs(),
+                "issues": issues or _generate_curated_issues(),
+            }
+    except Exception as e:
+        logger.warning(f"Real GitHub API sync error: {e}")
+        return None
+
+
 def fetch_or_load_github_data() -> dict[str, Any]:
-    """Load GitHub dataset from local cache if present, else generate and persist cache."""
+    """Load GitHub dataset from live API if token set, else local cache or synthetic generation."""
+    # 1. Try real GitHub API if token available
+    if settings.github_token:
+        real_data = fetch_real_github_api(repo=settings.github_repo, token=settings.github_token)
+        if real_data:
+            logger.info("Successfully fetched real GitHub data from %s", settings.github_repo)
+            return real_data
+
     cache_path = os.path.join(settings.data_dir, "github_cache.json")
     if os.path.exists(cache_path):
         try:
             with open(cache_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
-                logger.info("Loaded GitHub data from cache: %s", cache_path)
+                data["source"] = data.get("source", "synthetic")
+                logger.info("Loaded GitHub data from cache: %s (source=%s)", cache_path, data["source"])
                 return data
         except Exception as e:
             logger.warning("Failed to read github_cache.json: %s", e)
 
-    # Generate full curated dataset (32 contributors, 55 PRs, 55 Issues = 110 PRs/Issues)
+    # Generate curated synthetic dataset (labeled explicitly source='synthetic')
     prs = _generate_curated_prs()
     issues = _generate_curated_issues()
 
     data = {
+        "source": "synthetic",
         "contributors": CONTRIBUTORS_DATA,
         "service_commits": SERVICE_COMMITS_MAP,
         "pull_requests": prs,
@@ -230,26 +302,28 @@ def fetch_or_load_github_data() -> dict[str, Any]:
         os.makedirs(settings.data_dir, exist_ok=True)
         with open(cache_path, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2)
-        logger.info("Persisted GitHub data to cache: %s", cache_path)
+        logger.info("Persisted synthetic GitHub data to cache: %s", cache_path)
     except Exception as e:
         logger.warning("Could not write cache file %s: %s", cache_path, e)
 
     return data
 
 
-def load_github_data(graph: TenantGraph) -> dict[str, int]:
+def load_github_data(graph: TenantGraph) -> dict[str, Any]:
     """Ingest GitHub contributors, commits, PRs, issues, deployments, and ownership into graph."""
     data = fetch_or_load_github_data()
+    data_source = data.get("source", "synthetic")
 
     # 1. Ingest Persons (30+ people)
     person_count = 0
     for p in data["contributors"]:
         cypher = """
         MERGE (p:Person {login: $login})
-        SET p.name = $name
+        SET p.name = $name,
+            p.source = $source
         RETURN p.login
         """
-        graph.query(cypher, {"login": p["login"], "name": p["name"]})
+        graph.query(cypher, {"login": p["login"], "name": p["name"], "source": data_source})
         person_count += 1
 
     # 2. Ingest Commits & Ownership
@@ -261,10 +335,19 @@ def load_github_data(graph: TenantGraph) -> dict[str, int]:
         MATCH (p:Person {login: $login})
         MATCH (s:Service {name: $service})
         MERGE (p)-[c:COMMITTED]->(s)
-        SET c.n = $n, c.last_ts = $last_ts
+        SET c.n = $n, c.last_ts = $last_ts, c.source = $source
         RETURN p.login, s.name
         """
-        graph.query(cypher_comm, {"login": cm["login"], "service": cm["service"], "n": cm["n"], "last_ts": cm["last_ts"]})
+        graph.query(
+            cypher_comm,
+            {
+                "login": cm["login"],
+                "service": cm["service"],
+                "n": cm["n"],
+                "last_ts": cm["last_ts"],
+                "source": data_source,
+            },
+        )
         commit_count += 1
 
         # OWNS edge for designated owners
@@ -272,13 +355,14 @@ def load_github_data(graph: TenantGraph) -> dict[str, int]:
             cypher_own = """
             MATCH (p:Person {login: $login})
             MATCH (s:Service {name: $service})
-            MERGE (p)-[:OWNS]->(s)
+            MERGE (p)-[o:OWNS]->(s)
+            SET o.source = $source
             RETURN p.login, s.name
             """
-            graph.query(cypher_own, {"login": cm["login"], "service": cm["service"]})
+            graph.query(cypher_own, {"login": cm["login"], "service": cm["service"], "source": data_source})
             owner_count += 1
 
-    # 3. Ingest PullRequests (55) + Deployments (source='seeded')
+    # 3. Ingest PullRequests + Deployments
     pr_count = 0
     deploy_count = 0
     for pr in data["pull_requests"]:
@@ -294,14 +378,15 @@ def load_github_data(graph: TenantGraph) -> dict[str, int]:
             pr.body = $body,
             pr.merged_at = $merged_at,
             pr.url = $url,
-            pr.embedding = $embedding
+            pr.embedding = $embedding,
+            pr.source = $source
         MERGE (p)-[:AUTHORED]->(pr)
         MERGE (pr)-[:TOUCHES]->(s)
         MERGE (d:Deployment {id: $deploy_id})
         SET d.service = $service,
             d.version = $version,
             d.ts = $merged_at,
-            d.source = 'seeded'
+            d.source = $source
         MERGE (pr)-[:SHIPPED_IN]->(d)
         MERGE (d)-[:DEPLOYED_TO]->(s)
         RETURN pr.number
@@ -319,12 +404,13 @@ def load_github_data(graph: TenantGraph) -> dict[str, int]:
                 "embedding": embedding,
                 "deploy_id": deploy_id,
                 "version": version,
+                "source": data_source,
             },
         )
         pr_count += 1
         deploy_count += 1
 
-    # 4. Ingest Issues (55)
+    # 4. Ingest Issues
     issue_count = 0
     for issue in data["issues"]:
         embedding = embed_text(f"{issue['title']} {issue['body']}")
@@ -335,7 +421,8 @@ def load_github_data(graph: TenantGraph) -> dict[str, int]:
             iss.body = $body,
             iss.state = $state,
             iss.url = $url,
-            iss.embedding = $embedding
+            iss.embedding = $embedding,
+            iss.source = $source
         MERGE (iss)-[:ABOUT]->(s)
         RETURN iss.number
         """
@@ -349,13 +436,15 @@ def load_github_data(graph: TenantGraph) -> dict[str, int]:
                 "state": issue["state"],
                 "url": issue["url"],
                 "embedding": embedding,
+                "source": data_source,
             },
         )
         issue_count += 1
 
     logger.info(
-        "Ingested into %s: %d persons, %d commits, %d owners, %d PRs, %d deployments, %d issues",
+        "Ingested into %s (source=%s): %d persons, %d commits, %d owners, %d PRs, %d deployments, %d issues",
         graph.graph_name,
+        data_source,
         person_count,
         commit_count,
         owner_count,
@@ -365,6 +454,7 @@ def load_github_data(graph: TenantGraph) -> dict[str, int]:
     )
 
     return {
+        "source": data_source,
         "persons": person_count,
         "commits": commit_count,
         "owners": owner_count,

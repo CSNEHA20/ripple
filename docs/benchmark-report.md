@@ -2,8 +2,9 @@
 
 **Protocol Version:** v2.0  
 **Pre-Registered Labels Commit:** `29227d45ac0f414827fa5218df06c7188a6bc2ec`  
-**Calibration Check:** PASSED (Rank-correlation of evidence scores against diagnosis correctness across scenario runs)  
+**Calibration Check:** INSUFFICIENT SAMPLE SIZE (Evaluated on 5 scenarios / 10 runs; rank correlation cannot statistically establish calibration without a larger test corpus)  
 **Confidence Policy:** UI displays `evidence_score`  
+**Execution Pipeline:** Deterministic graph reasoning pipeline (average duration ~0.24s). Live LLM tool calling is evaluated separately during live sessions.
 
 ## 1. Summary Comparison (Memory ON vs Memory OFF)
 
@@ -14,6 +15,8 @@
 | **Unsafe Recommendation Rate** | 20.0% | 20.0% | 0.0% (applicability filter blocks stale traps) |
 | **Average Tool Calls** | 37.2 | 35.6 | 1.60 calls |
 | **Average Duration (s)** | 0.24s | 0.18s | 0.06s |
+
+> **Integrity Note:** In this 5-scenario evaluation sample, deterministic graph reasoning achieved identical diagnosis and recommendation scores between memory-on and memory-off modes. Memory recall demonstrates procedural lookups for repeated and variant incidents, while applicability checking successfully blocks stale fixes. For novel and stale trap scenarios, 'FAIL' denotes intentional abstention when confidence criteria are not met rather than erroneous execution.
 
 ## 2. Per-Scenario Evaluation Breakdown
 
@@ -36,3 +39,5 @@
 - Scenarios include repeated, cross-service variants, novel incidents, stale-fix traps, and misleading-memory cascades.
 - In the `misleading_memory` family, memory performance is honestly reported even when graph evidence overrides misleading historical patterns.
 - No model weights or scoring coefficients were post-hoc tuned on benchmark scenarios.
+- The 0.24s average duration reflects in-memory graph traversal without blocking LLM round-trips. Live agent investigations make live provider calls when configured.
+

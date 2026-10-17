@@ -1,11 +1,15 @@
 import logging
+import uuid
+import json
+import time
 from contextlib import asynccontextmanager
 from typing import Annotated, Any
-from fastapi import FastAPI, Header, HTTPException, Query, Depends, Request
-from fastapi.responses import StreamingResponse
+from fastapi import FastAPI, Header, HTTPException, Query, Depends, Request, BackgroundTasks
+from fastapi.responses import StreamingResponse, PlainTextResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from app.config import settings
+from app.security import verify_webhook_signature, check_alert_dedupe
 from app.tenancy import TenantGraph, ensure_tenant, get_falkordb_client, sanitize_tenant_id
 from app.schema import ensure_tenant_schema
 from app.ingest.bootstrap import bootstrap_tenant_all, bootstrap_second_tenant
@@ -59,7 +63,10 @@ class TenantMiddleware(BaseHTTPMiddleware):
         target_tenant = sanitize_tenant_id(tenant_header or tenant_query or "storefront")
 
         request.state.tenant_id = target_tenant
-        request.state.tenant_graph = TenantGraph(tenant_id=target_tenant)
+        try:
+            request.state.tenant_graph = TenantGraph(tenant_id=target_tenant)
+        except Exception:
+            request.state.tenant_graph = None
 
         response = await call_next(request)
         response.headers["X-Tenant"] = target_tenant
@@ -155,26 +162,32 @@ def reembed_tenant(tenant_id: str):
         clean_id = sanitize_tenant_id(tenant_id)
         graph = TenantGraph(clean_id)
 
-        # 1. Re-embed Incidents
+        # 1. Re-embed Incidents with parameterized Cypher (Fix I8)
         inc_res = graph.query("MATCH (i:Incident) RETURN i.id, i.title, i.summary")
         inc_count = 0
         if inc_res and inc_res.result_set:
             for row in inc_res.result_set:
                 iid, title, summary = row[0], row[1] or "", row[2] or ""
                 vec = embed_text(f"{title} {summary}")
-                vals_str = ",".join(str(round(x, 6)) for x in vec)
-                graph.query(f"MATCH (i:Incident {{id: '{iid}'}}) SET i.signature_embedding = vecf32([{vals_str}])")
+                try:
+                    graph.query("MATCH (i:Incident {id: $iid}) SET i.signature_embedding = vecf32($vec)", {"iid": str(iid), "vec": vec})
+                except Exception:
+                    vals_str = ",".join(str(round(x, 6)) for x in vec)
+                    graph.query(f"MATCH (i:Incident {{id: $iid}}) SET i.signature_embedding = vecf32([{vals_str}])", {"iid": str(iid)})
                 inc_count += 1
 
-        # 2. Re-embed Decisions
+        # 2. Re-embed Decisions with parameterized Cypher (Fix I8)
         dec_res = graph.query("MATCH (d:Decision) RETURN d.id, d.summary")
         dec_count = 0
         if dec_res and dec_res.result_set:
             for row in dec_res.result_set:
                 did, summary = row[0], row[1] or ""
                 vec = embed_text(summary)
-                vals_str = ",".join(str(round(x, 6)) for x in vec)
-                graph.query(f"MATCH (d:Decision {{id: '{did}'}}) SET d.embedding = vecf32([{vals_str}])")
+                try:
+                    graph.query("MATCH (d:Decision {id: $did}) SET d.embedding = vecf32($vec)", {"did": str(did), "vec": vec})
+                except Exception:
+                    vals_str = ",".join(str(round(x, 6)) for x in vec)
+                    graph.query(f"MATCH (d:Decision {{id: $did}}) SET d.embedding = vecf32([{vals_str}])", {"did": str(did)})
                 dec_count += 1
 
         return {
@@ -193,14 +206,21 @@ def reembed_tenant(tenant_id: str):
 @app.post("/api/webhooks/alert")
 async def alert_webhook(
     request: Request,
+    background_tasks: BackgroundTasks,
+    sync: bool = Query(default=False, description="Execute synchronously if true"),
     graph: TenantGraph = Depends(get_current_tenant),
 ):
     """Alert Intake Webhook:
     Accepts generic JSON alerts and Prometheus Alertmanager payloads,
-    creates an incident on the graph blackboard, and starts the 4-agent crew.
+    verifies HMAC signature, deduplicates, and launches the 4-agent crew asynchronously.
     """
     try:
-        payload = await request.json()
+        body_bytes = await request.body()
+        sig = request.headers.get("X-Hub-Signature-256") or request.headers.get("X-Signature")
+        if not verify_webhook_signature(body_bytes, sig, settings.webhook_secret):
+            raise HTTPException(status_code=401, detail="Invalid webhook signature")
+
+        payload = json.loads(body_bytes.decode("utf-8")) if body_bytes else {}
         service = "unknown"
         alert_text = "System alert received"
         severity = "P2"
@@ -222,19 +242,60 @@ async def alert_webhook(
             severity = payload.get("severity", "P2")
             scenario_id = payload.get("scenario_id")
 
-        orchestrator = IncidentOrchestrator(mode="live" if settings.openai_api_key else "replay")
-        crew_res, trace = orchestrator.run_crew(
-            graph=graph,
-            alert={"service": service, "text": alert_text, "severity": severity},
-            scenario_id=scenario_id,
-            auto_approve=False,
+        # Deduplicate alert
+        dedupe_key = f"{service}:{alert_text}"
+        if check_alert_dedupe(dedupe_key):
+            return {
+                "status": "deduplicated",
+                "message": "Alert deduplicated within window",
+                "service": service,
+            }
+
+        # Multi-provider selection (Fix I6)
+        has_live_llm = bool(settings.openai_api_key or settings.gemini_api_key or settings.anthropic_api_key or settings.nvidia_api_key)
+        mode = "live" if has_live_llm else "replay"
+
+        if sync:
+            orchestrator = IncidentOrchestrator(mode=mode)
+            crew_res, trace = orchestrator.run_crew(
+                graph=graph,
+                alert={"service": service, "text": alert_text, "severity": severity},
+                scenario_id=scenario_id,
+                auto_approve=False,
+            )
+            return {
+                "status": "created",
+                "incident_id": crew_res.get("incident_id"),
+                "service": service,
+                "crew_result": crew_res,
+            }
+
+        # Asynchronous 202 execution (R2)
+        inc_id = f"inc_{uuid.uuid4().hex[:8]}"
+
+        def _run_bg():
+            orch = IncidentOrchestrator(mode=mode)
+            orch.run_crew(
+                graph=graph,
+                alert={"service": service, "text": alert_text, "severity": severity},
+                incident_id=inc_id,
+                scenario_id=scenario_id,
+                auto_approve=False,
+            )
+
+        background_tasks.add_task(_run_bg)
+        return JSONResponse(
+            status_code=202,
+            content={
+                "status": "accepted",
+                "incident_id": inc_id,
+                "service": service,
+                "stream_url": f"/api/incidents/{inc_id}/stream",
+                "message": f"Incident crew started for '{inc_id}' in background.",
+            },
         )
-        return {
-            "status": "created",
-            "incident_id": crew_res.get("incident_id"),
-            "service": service,
-            "crew_result": crew_res,
-        }
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Webhook alert processing failed: {e}")
         raise HTTPException(status_code=500, detail=f"Webhook alert processing failed: {str(e)}")
@@ -886,6 +947,7 @@ class IncidentRunRequest(BaseModel):
     as_of: float | None = None
     mode: str = "replay"
     auto_approve: bool = False
+    sync: bool | None = None
 
 
 class ActionApprovalRequest(BaseModel):
@@ -935,15 +997,47 @@ def api_list_incidents(
 @app.post("/api/incidents")
 def api_run_incident_crew(
     req: IncidentRunRequest,
+    background_tasks: BackgroundTasks,
+    request: Request,
     graph: TenantGraph = Depends(get_current_tenant),
 ):
     """Run the 4-agent Ripple crew (Triage, Investigator, Responder, Verifier) over the graph blackboard."""
     try:
+        is_async = (
+            req.sync is False
+            or request.query_params.get("async") == "true"
+            or request.headers.get("x-async") == "true"
+        )
+        inc_id = req.incident_id or f"inc_{uuid.uuid4().hex[:8]}"
+
+        if is_async:
+            def _run_bg():
+                orchestrator = IncidentOrchestrator(mode=req.mode)
+                orchestrator.run_crew(
+                    graph=graph,
+                    alert=req.alert,
+                    incident_id=inc_id,
+                    scenario_id=req.scenario_id,
+                    as_of=req.as_of,
+                    auto_approve=req.auto_approve,
+                )
+
+            background_tasks.add_task(_run_bg)
+            return JSONResponse(
+                status_code=202,
+                content={
+                    "status": "accepted",
+                    "incident_id": inc_id,
+                    "stream_url": f"/api/incidents/{inc_id}/stream",
+                    "message": f"Incident crew started for '{inc_id}' in background.",
+                },
+            )
+
         orchestrator = IncidentOrchestrator(mode=req.mode)
         result, trace = orchestrator.run_crew(
             graph=graph,
             alert=req.alert,
-            incident_id=req.incident_id,
+            incident_id=inc_id,
             scenario_id=req.scenario_id,
             as_of=req.as_of,
             auto_approve=req.auto_approve,
@@ -989,13 +1083,29 @@ def api_get_incident(
 @app.get("/api/incidents/{incident_id}/stream")
 async def api_stream_incident_events(
     incident_id: str,
+    tenant: str = Query(default="storefront", description="Tenant graph ID"),
+    last_event_id: str | None = Query(default=None, description="Last-Event-ID query fallback"),
+    last_event_id_header: str | None = Header(default=None, alias="Last-Event-ID"),
 ):
     """Server-Sent Events (SSE) stream of live agent timeline events."""
-    async def sse_generator():
-        async for ev in event_bus.subscribe(incident_id):
-            yield f"event: {ev.get('event', 'message')}\ndata: {json.dumps(ev)}\n\n"
+    effective_last_id = last_event_id_header or last_event_id
 
-    return StreamingResponse(sse_generator(), media_type="text/event-stream")
+    async def sse_generator():
+        async for ev in event_bus.subscribe(incident_id, last_event_id=effective_last_id):
+            ev_id = ev.get("id", "")
+            ev_type = ev.get("event", "message")
+            yield f"id: {ev_id}\nevent: {ev_type}\ndata: {json.dumps(ev)}\n\n"
+
+    return StreamingResponse(
+        sse_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+            "X-Tenant": tenant,
+        },
+    )
 
 
 @app.post("/incidents/{incident_id}/actions/{action_id}/approve")
@@ -1419,6 +1529,102 @@ def api_get_benchmark_report():
     except Exception as e:
         logger.error(f"Failed to fetch benchmark report: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to fetch benchmark report: {str(e)}")
+
+
+# ============================================================================
+# Live Telemetry, Target Fault Injection, GitHub Sync, & Topology Discovery
+# ============================================================================
+
+from app.adapters.demo_target import (
+    break_service,
+    restore_service,
+    get_service_state,
+    generate_prometheus_metrics_text,
+)
+from app.ingest.github import load_github_data, fetch_real_github_api
+from app.adapters.topology import discover_topology_from_environment, apply_discovered_topology
+
+
+@app.get("/metrics")
+def api_prometheus_metrics():
+    """Prometheus exposition format endpoint exposing live metrics for all services."""
+    text = generate_prometheus_metrics_text()
+    return PlainTextResponse(text, media_type="text/plain; version=0.0.4; charset=utf-8")
+
+
+@app.post("/api/telemetry/demo/break")
+def api_break_demo_service(
+    service: str = Query(..., description="Target service name"),
+    error_type: str = Query(default="latency_p95", description="Error type: latency_p95 or error_rate"),
+):
+    """Fault injection switch for live demo target."""
+    break_service(service, error_type)
+    return {"status": "broken", "service": service, "error_type": error_type}
+
+
+@app.post("/api/telemetry/demo/restore")
+def api_restore_demo_service(
+    service: str = Query(..., description="Target service name"),
+):
+    """Restore service health in live demo target."""
+    restore_service(service)
+    return {"status": "restored", "service": service}
+
+
+@app.get("/api/telemetry/demo/state")
+def api_get_demo_service_state(
+    service: str | None = Query(default=None, description="Optional service name"),
+):
+    """Retrieve current fault injection state for demo services."""
+    return {"states": get_service_state(service)}
+
+
+@app.post("/api/github/sync")
+def api_github_sync(
+    graph: TenantGraph = Depends(get_current_tenant),
+):
+    """Trigger live GitHub repository synchronization."""
+    repo = settings.github_repo
+    token = settings.github_token
+    real_data = fetch_real_github_api(repo=repo, token=token) if token else None
+    res = load_github_data(graph=graph)
+    return {
+        "status": "success",
+        "repo": repo,
+        "is_real": real_data is not None and real_data.get("source") == "real",
+        "synced": res,
+    }
+
+
+@app.post("/api/topology/discover")
+def api_discover_topology(
+    graph: TenantGraph = Depends(get_current_tenant),
+):
+    """Discover topology from environment and container declarations, updating tenant graph."""
+    edges = discover_topology_from_environment()
+    apply_discovered_topology(graph, edges)
+    return {
+        "status": "success",
+        "discovered_edges_count": len(edges),
+        "edges": [
+            {"source": e.source_service, "target": e.target_service, "protocol": e.protocol}
+            for e in edges
+        ],
+    }
+
+
+@app.get("/api/system/status")
+def api_system_status():
+    """System status and LLM provider health check."""
+    llm_status = "live" if settings.openai_api_key or settings.gemini_api_key or settings.anthropic_api_key else "degraded"
+    return {
+        "llm_provider": settings.llm_provider,
+        "llm_status": llm_status,
+        "telemetry_source": settings.telemetry_source,
+        "embeddings_backend": settings.embeddings_backend,
+        "github_repo": settings.github_repo,
+    }
+
 
 
 

@@ -131,13 +131,20 @@ def approve_action(
     incident_id: str,
     action_id: str,
     approver: str = "operator",
+    dry_run: bool = False,
 ) -> dict[str, Any]:
     """Operator approval gate for a needs_approval Action:
-    Transitions status: proposed -> approved -> executed.
+    Transitions status: proposed -> approved -> executed,
+    and runs the registered real executor (Slack, GitHub dispatch, or Sandbox).
     """
+    from app.actions.executors import execute_action
+
     now_ts = time.time()
     # Check current status
-    check_res = graph.query("MATCH (a:Action {id: $aid}) RETURN a.status AS status, a.class AS class, a.kind AS kind", {"aid": action_id})
+    check_res = graph.query(
+        "MATCH (a:Action {id: $aid}) RETURN a.status AS status, a.class AS class, a.kind AS kind, a.payload AS payload",
+        {"aid": action_id},
+    )
     if not check_res or not check_res.result_set:
         raise ValueError(f"Action '{action_id}' not found")
 
@@ -145,21 +152,46 @@ def approve_action(
     current_status = row[0]
     action_class = row[1]
     kind = row[2]
+    payload_str = row[3]
+    payload_dict = json.loads(payload_str) if payload_str else {}
 
     if current_status == "executed":
         return {"id": action_id, "status": "executed", "message": "Action already executed"}
     if current_status == "rejected":
         raise ValueError(f"Action '{action_id}' was previously rejected")
 
+    # Run real executor with audit record
+    receipt = execute_action(
+        graph=graph,
+        incident_id=incident_id,
+        action_id=action_id,
+        action_kind=kind,
+        payload=payload_dict,
+        approver=approver,
+        dry_run=dry_run,
+    )
+
+    final_status = "dry_run" if dry_run else "executed"
+
     cypher = """
     MATCH (a:Action {id: $aid})
-    SET a.status = 'executed',
+    SET a.status = $status,
         a.approved_by = $approver,
         a.approved_ts = $ts,
-        a.executed_ts = $ts
+        a.executed_ts = $ts,
+        a.idempotency_key = $idempotency_key
     RETURN a.id AS id, a.status AS status, a.approved_by AS approved_by, a.executed_ts AS executed_ts
     """
-    graph.query(cypher, {"aid": action_id, "approver": approver, "ts": now_ts})
+    graph.query(
+        cypher,
+        {
+            "aid": action_id,
+            "status": final_status,
+            "approver": approver,
+            "ts": now_ts,
+            "idempotency_key": receipt.idempotency_key,
+        },
+    )
     logger.info(f"Action '{kind}' [{action_id}] APPROVED and EXECUTED by {approver} for incident {incident_id}")
 
     return {
@@ -167,10 +199,11 @@ def approve_action(
         "incident_id": incident_id,
         "kind": kind,
         "class": action_class,
-        "status": "executed",
+        "status": final_status,
         "approved_by": approver,
         "approved_ts": now_ts,
         "executed_ts": now_ts,
+        "receipt": receipt.model_dump(),
     }
 
 

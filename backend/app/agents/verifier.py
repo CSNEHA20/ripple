@@ -70,12 +70,26 @@ class VerifierAgent:
         if task_id:
             update_task_status(graph, task_id, "in_progress")
 
-        # 2. Check post-intervention metrics via simulator if scenario_id provided, or default to resolved
+        # 2. Check post-intervention metrics via real telemetry adapter or simulator
         observed = "resolved"
         metrics_after = {}
         explanation = "Service returned to normal operating parameters."
 
-        if scenario_id:
+        from app.adapters.demo_target import get_demo_target_state
+        from app.adapters.prometheus import PrometheusAdapter
+
+        demo_state = get_demo_target_state().get(target_service.lower(), {})
+        if settings.telemetry_source == "prometheus" or (demo_state and demo_state.get("broken")):
+            prom_adapter = PrometheusAdapter()
+            post_metric = prom_adapter.check_health(target_service, ref_ts=ref_ts)
+            if post_metric.status == "failing" or post_metric.error_rate > 0.15:
+                observed = "failed"
+                explanation = f"Post-fix error rate remained high ({post_metric.error_rate:.1%}) after {runbook_id}."
+            else:
+                observed = "resolved"
+                explanation = f"Post-fix metrics normalized: latency {post_metric.latency_p95_ms}ms, 0% errors."
+            metrics_after = post_metric.model_dump()
+        elif scenario_id:
             try:
                 sim_result = sim_apply_intervention(scenario_id=scenario_id, runbook_id=runbook_id)
                 observed = sim_result.get("observed", "resolved")

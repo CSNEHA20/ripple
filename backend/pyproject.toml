@@ -6,7 +6,6 @@ build-backend = "setuptools.build_meta"
 name = "ripple-backend"
 version = "0.1.0"
 description = "Ripple - On-call agent crew with FalkorDB brain"
-readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "fastapi>=0.110.0",
@@ -36,3 +35,6 @@ asyncio_mode = "auto"
 [tool.ruff]
 line-length = 100
 target-version = "py311"
+
+[tool.setuptools.packages.find]
+include = ["app*"]

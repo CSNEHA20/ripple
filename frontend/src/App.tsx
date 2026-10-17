@@ -14,6 +14,8 @@ import {
   askBrain,
   getBenchmarkReport,
   runBenchmark,
+  subscribeIncidentStream,
+  getSystemStatus,
   type ScenarioItem,
   type SSEEvent,
   type GraphNode,
@@ -102,7 +104,7 @@ export default function App() {
   const [isScenarioDrawerOpen, setIsScenarioDrawerOpen] = useState<boolean>(false);
 
   // Active Incident State
-  const [currentIncidentId, setCurrentIncidentId] = useState<string>('INC-4029');
+  const [currentIncidentId, setCurrentIncidentId] = useState<string>('inc_active_01');
   const [activePhase, setActivePhase] = useState<string>('triage');
   const [events, setEvents] = useState<SSEEvent[]>([]);
   const [hypotheses, setHypotheses] = useState<HypothesisItem[]>([]);
@@ -111,6 +113,9 @@ export default function App() {
   const [memoryData, setMemoryData] = useState<MemoryRecallData | null>(null);
   const [pendingActions, setPendingActions] = useState<PendingAction[]>([]);
   const [isProcessingAction, setIsProcessingAction] = useState<boolean>(false);
+  const [systemStatus, setSystemStatus] = useState<any>(null);
+  const streamCleanupRef = useRef<(() => void) | null>(null);
+  const lastEventIdRef = useRef<string | null>(null);
 
   // Graph State & Entity Filter
   const [graphNodes, setGraphNodes] = useState<GraphNode[]>([]);
@@ -315,8 +320,18 @@ export default function App() {
       })
       .catch((err) => console.error('Failed to load scenarios:', err));
 
+    getSystemStatus()
+      .then(setSystemStatus)
+      .catch(console.warn);
+
     loadInitialGraph();
     loadBenchmarkData();
+
+    return () => {
+      if (streamCleanupRef.current) {
+        streamCleanupRef.current();
+      }
+    };
   }, [tenant]);
 
   const handleSelectScenario = (id: string) => {
@@ -332,8 +347,12 @@ export default function App() {
     }
   };
 
-  // Launch Agent Crew
+  // Launch Agent Crew in Real Time with SSE streaming
   const handleRunCrew = async () => {
+    if (streamCleanupRef.current) {
+      streamCleanupRef.current();
+      streamCleanupRef.current = null;
+    }
     setIsRunning(true);
     setElapsedSeconds(0);
     setEvents([]);
@@ -342,6 +361,7 @@ export default function App() {
     setHighlightedNodes(new Set());
     setHighlightedEdges(new Set());
     setActivePhase('triage');
+    lastEventIdRef.current = null;
 
     try {
       // 1. If scenario selected, seed graph
@@ -349,94 +369,77 @@ export default function App() {
         await loadScenario(selectedScenarioId, tenant);
       }
 
-      // 2. Run Crew
+      // 2. Start Crew (Async 202 Accepted)
       const resp = await runIncidentCrew(
         {
           alert: { service: customService, text: customAlertText },
           scenario_id: selectedScenarioId || undefined,
           mode: mode,
           auto_approve: false,
+          sync: false,
         },
         tenant
       );
 
-      const incId = resp.data?.incident_id || `INC-${Math.floor(1000 + Math.random() * 9000)}`;
+      const incId = resp.incident_id || resp.data?.incident_id;
+      if (!incId) {
+        throw new Error('Failed to start incident: No incident ID returned from server.');
+      }
       setCurrentIncidentId(incId);
-      fullTraceRef.current = resp.trace;
 
-      if (resp.trace?.nodes) setHighlightedNodes(new Set(resp.trace.nodes));
-      if (resp.trace?.edges) setHighlightedEdges(new Set(resp.trace.edges));
+      // 3. Subscribe to real-time live SSE stream
+      streamCleanupRef.current = subscribeIncidentStream(
+        incId,
+        tenant,
+        lastEventIdRef.current,
+        (sseEv: SSEEvent) => {
+          if ((sseEv as any).id) lastEventIdRef.current = (sseEv as any).id;
+          if (sseEv.event === 'ping') return;
 
-      const newEvents: SSEEvent[] = [
-        {
-          incident_id: incId,
-          event: 'incident_opened',
-          data: { service: customService, text: customAlertText },
-          ts: Date.now() / 1000 - 4,
+          setEvents((prev) => [...prev, sseEv]);
+
+          if (sseEv.event === 'agent_started') {
+            const role = (sseEv.data?.role || '').toLowerCase();
+            if (role === 'triage') setActivePhase('triage');
+            else if (role === 'investigator') setActivePhase('investigator');
+            else if (role === 'responder') setActivePhase('responder');
+            else if (role === 'verifier') setActivePhase('verifier');
+          } else if (sseEv.event === 'tool_called') {
+            if (sseEv.data?.node_ids) setHighlightedNodes(new Set(sseEv.data.node_ids));
+          } else if (sseEv.event === 'hypotheses_ranked') {
+            getIncident(incId, tenant).then((state) => {
+              if (state.blackboard?.hypotheses) {
+                setHypotheses(state.blackboard.hypotheses);
+                if (state.blackboard.hypotheses.length > 0) {
+                  setSelectedHypothesisId(state.blackboard.hypotheses[0].id);
+                }
+              }
+            }).catch(console.warn);
+          } else if (sseEv.event === 'approval_needed') {
+            setActivePhase('awaiting_approval');
+            getIncident(incId, tenant).then((state) => {
+              if (state.pending_actions) setPendingActions(state.pending_actions);
+            }).catch(console.warn);
+          } else if (sseEv.event === 'action_executed') {
+            setActivePhase('verifier');
+          } else if (sseEv.event === 'incident_closed') {
+            setIsRunning(false);
+            setActivePhase('closed');
+            getIncident(incId, tenant).then((state) => {
+              if (state.blackboard?.hypotheses) setHypotheses(state.blackboard.hypotheses);
+              if (state.pending_actions) setPendingActions(state.pending_actions);
+            }).catch(console.warn);
+            loadInitialGraph();
+          }
         },
-        {
-          incident_id: incId,
-          event: 'agent_started',
-          data: { agent: 'triage_agent', role: 'triage' },
-          ts: Date.now() / 1000 - 3,
-        },
-      ];
+        (err) => {
+          console.warn('Live SSE stream notice:', err);
+        }
+      );
 
-      if (resp.trace?.steps) {
-        resp.trace.steps.forEach((st: TraceStep, idx: number) => {
-          newEvents.push({
-            incident_id: incId,
-            event: 'tool_called',
-            data: {
-              tool: st.tool,
-              cypher: st.cypher,
-              result_count: st.rows_count || 1,
-              summary: st.summary,
-            },
-            ts: Date.now() / 1000 - 2 + idx * 0.2,
-          });
-        });
-      }
-
-      const invHypotheses = resp.data?.investigation?.hypotheses || [];
-      setHypotheses(invHypotheses);
-      if (invHypotheses.length > 0) {
-        setSelectedHypothesisId(invHypotheses[0].id);
-        newEvents.push({
-          incident_id: incId,
-          event: 'hypotheses_ranked',
-          data: {
-            count: invHypotheses.length,
-            top_hypothesis: invHypotheses[0],
-          },
-          ts: Date.now() / 1000 - 1,
-        });
-      }
-
-      if (resp.data?.investigation?.evidence_request_task) {
-        setPendingEvidenceRequest(resp.data.investigation.evidence_request_task);
-        newEvents.push({
-          incident_id: incId,
-          event: 'evidence_requested',
-          data: { task: resp.data.investigation.evidence_request_task },
-          ts: Date.now() / 1000 - 0.5,
-        });
-      }
-
-      if (resp.data?.triage?.recalled_memory) {
-        setMemoryData(resp.data.triage.recalled_memory);
-      }
-
-      if (resp.data?.response?.action?.status === 'proposed') {
-        setPendingActions([resp.data.response.action]);
-        setActivePhase('responder');
-      } else if (resp.data?.status === 'closed') {
-        setActivePhase('verifier');
-      }
-
-      setEvents(newEvents);
+      // Refresh topology for newly seeded/discovered nodes
       await loadInitialGraph();
-    } catch (err) {
+    } catch (err: any) {
       console.error('Run crew error:', err);
     } finally {
       setIsRunning(false);
@@ -584,6 +587,17 @@ export default function App() {
 
         {/* Scrollable Workspace Body */}
         <div className="main-scroll-body">
+          {/* Degraded mode banner if no live LLM API keys configured */}
+          {systemStatus?.llm_status === 'degraded' && (
+            <div className="bg-amber-950/40 border border-amber-600/30 rounded-xl px-4 py-2 text-xs text-amber-200 flex items-center justify-between gap-3 mb-4">
+              <div className="flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+                <span><b>Degraded Mode</b>: No live LLM API keys configured. Ripple is reasoning deterministically over graph topology, telemetry evidence, and procedural memory.</span>
+              </div>
+              <span className="text-[10px] uppercase font-mono px-2 py-0.5 rounded bg-amber-500/20 text-amber-300">Deterministic Active</span>
+            </div>
+          )}
+
           {activeTab === 'incident' && (
             <div className="flex flex-col gap-5">
               {/* Incident Header with Breadcrumb, Heartbeat, Title, Metadata & View Controls */}

@@ -190,6 +190,76 @@ class InvestigatorAgent:
         llm_out = loop_out["final"]
         trace.merge(loop_out["trace"])
 
+        # Convert tool execution findings into Evidence and re-score hypotheses
+        tool_ev_added = False
+        evidence_by_hyp_id: dict[str, dict[str, list[dict[str, Any]]]] = {
+            h["id"]: {
+                "supporting": list(h.get("supporting_evidence", [])),
+                "contradicting": list(h.get("contradicting_evidence", [])),
+            }
+            for h in scored_hyps
+        }
+
+        for tc in loop_out.get("tool_calls", []):
+            t_name = tc.get("tool")
+            t_res = tc.get("result", {})
+            if t_name == "service_health" and isinstance(t_res, dict):
+                for m in t_res.get("metrics", []):
+                    svc = m.get("service")
+                    st = m.get("status", "normal")
+                    for h in scored_hyps:
+                        if h.get("service") == svc:
+                            polarity = "support" if st in ("failing", "degraded") else "contradict"
+                            ev_id = f"ev_tool_{h['id']}_metric_{len(evidence_by_hyp_id[h['id']]['supporting'])+1}"
+                            new_ev = {
+                                "id": ev_id,
+                                "hypothesis_id": h["id"],
+                                "service": svc,
+                                "type": "metric",
+                                "kind": "observed",
+                                "polarity": polarity,
+                                "summary": f"Live tool verification: '{svc}' is {st} (error_rate={m.get('error_rate', 0):.2%}, latency={m.get('latency_p95_ms', 0)}ms).",
+                                "source_ref": m.get("snapshot_id", "live_tool"),
+                                "observed_ts": float(m.get("ts", ref_ts)),
+                                "freshness": 1.0,
+                                "weight": 3.0,
+                                "source": "real",
+                            }
+                            if polarity == "support":
+                                evidence_by_hyp_id[h["id"]]["supporting"].append(new_ev)
+                            else:
+                                evidence_by_hyp_id[h["id"]]["contradicting"].append(new_ev)
+                            tool_ev_added = True
+            elif t_name == "recent_changes" and isinstance(t_res, dict):
+                svc = t_res.get("service")
+                deploys = t_res.get("deployments", [])
+                for h in scored_hyps:
+                    if h.get("service") == svc and deploys:
+                        dep = deploys[0]
+                        ev_id = f"ev_tool_{h['id']}_dep_{len(evidence_by_hyp_id[h['id']]['supporting'])+1}"
+                        new_ev = {
+                            "id": ev_id,
+                            "hypothesis_id": h["id"],
+                            "service": svc,
+                            "type": "recent_deploy",
+                            "kind": "observed",
+                            "polarity": "support",
+                            "summary": f"Live tool verified deployment {dep.get('version')} on '{svc}' ({dep.get('hours_before_ref', 0)}h ago).",
+                            "source_ref": dep.get("id", "live_deploy"),
+                            "observed_ts": float(dep.get("ts", ref_ts)),
+                            "freshness": 1.0,
+                            "weight": 2.5,
+                            "source": "real",
+                        }
+                        evidence_by_hyp_id[h["id"]]["supporting"].append(new_ev)
+                        tool_ev_added = True
+
+        if tool_ev_added:
+            from app.hypotheses.score import score_hypotheses
+            scored_hyps, re_trace = score_hypotheses(scored_hyps, evidence_by_hyp_id, as_of=ref_ts)
+            trace.merge(re_trace)
+            top_hyp = scored_hyps[0] if scored_hyps else None
+
         # 5. Record Observation on blackboard
         obs = record_agent_observation(
             graph=graph,

@@ -102,10 +102,11 @@ docker compose up -d --build
 
 ---
 
-## 🛡️ Honest Labelling: Real vs. Seeded Data
+## 🛡️ Honest Labelling: Real vs. Synthetic vs. Seeded Data
 
-- **Real Data (`source='real'`):** Microservice architecture graphs, GitHub contributors, commits, PRs, issues, and code-derived ownership mapping.
-- **Seeded Data (`source='seeded'`):** Incident scenarios, simulated deployment records, metric snapshots, historical benchmark incident outcomes.
+- **Real Data (`source='real'`):** Microservice topology discovered from live container and host environments, live GitHub commits and contributors via GitHub REST API, live Prometheus telemetry queries via adapter, and real audit log execution receipts.
+- **Synthetic Data (`source='synthetic'`):** Fallback PR and issue records generated when running without a GitHub API token or in offline demo mode.
+- **Seeded Data (`source='seeded'`):** Simulator incident scenarios, simulated deployment records, and benchmark test fixtures.
 
 ---
 

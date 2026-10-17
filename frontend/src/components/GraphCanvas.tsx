@@ -38,32 +38,6 @@ interface GraphCanvasProps {
   height?: number;
 }
 
-const FALLBACK_BLAST = ['api-gateway', 'checkoutservice', 'currencyservice'];
-
-const FALLBACK_NODES: GraphNode[] = [
-  { id: 'frontend', name: 'frontend', label: 'Service', tier: 'tier-1', color: '#3b82f6', val: 14 },
-  { id: 'cartservice', name: 'cartservice', label: 'Service', tier: 'tier-1', color: '#3b82f6', val: 14 },
-  { id: 'productcatalogservice', name: 'productcatalogservice', label: 'Service', tier: 'tier-1', color: '#3b82f6', val: 14 },
-  { id: 'currencyservice', name: 'currencyservice', label: 'Service', tier: 'tier-2', color: '#3b82f6', val: 14 },
-  { id: 'paymentservice', name: 'paymentservice', label: 'Service', tier: 'tier-1', color: '#3b82f6', val: 14 },
-  { id: 'shippingservice', name: 'shippingservice', label: 'Service', tier: 'tier-2', color: '#3b82f6', val: 14 },
-  { id: 'emailservice', name: 'emailservice', label: 'Service', tier: 'tier-3', color: '#3b82f6', val: 14 },
-  { id: 'checkoutservice', name: 'checkoutservice', label: 'Service', tier: 'tier-1', color: '#3b82f6', val: 14 },
-  { id: 'recommendationservice', name: 'recommendationservice', label: 'Service', tier: 'tier-2', color: '#3b82f6', val: 14 },
-  { id: 'adservice', name: 'adservice', label: 'Service', tier: 'tier-3', color: '#3b82f6', val: 14 },
-  { id: 'redis-cart', name: 'redis-cart', label: 'Service', tier: 'tier-1', color: '#3b82f6', val: 14 },
-];
-
-const FALLBACK_EDGES: GraphEdge[] = [
-  { id: 'f-c', source: 'frontend', target: 'cartservice', type: 'DEPENDS_ON', protocol: 'gRPC', verified: true },
-  { id: 'f-pc', source: 'frontend', target: 'productcatalogservice', type: 'DEPENDS_ON', protocol: 'gRPC', verified: true },
-  { id: 'f-co', source: 'frontend', target: 'checkoutservice', type: 'DEPENDS_ON', protocol: 'gRPC', verified: true },
-  { id: 'co-p', source: 'checkoutservice', target: 'paymentservice', type: 'DEPENDS_ON', protocol: 'gRPC', verified: true },
-  { id: 'co-s', source: 'checkoutservice', target: 'shippingservice', type: 'DEPENDS_ON', protocol: 'gRPC', verified: true },
-  { id: 'co-e', source: 'checkoutservice', target: 'emailservice', type: 'DEPENDS_ON', protocol: 'gRPC', verified: true },
-  { id: 'c-r', source: 'cartservice', target: 'redis-cart', type: 'DEPENDS_ON', protocol: 'redis', verified: true },
-];
-
 const nid = (v: any): string => ((typeof v === 'object' ? v?.id : v) || '').toString().toLowerCase();
 
 export const GraphCanvas: React.FC<GraphCanvasProps> = ({
@@ -148,7 +122,6 @@ export const GraphCanvas: React.FC<GraphCanvasProps> = ({
     hops.forEach((d, id) => {
       if (d <= 1) s.add(id);
     });
-    if (s.size <= 1) FALLBACK_BLAST.forEach((x) => s.add(x));
     return s;
   }, [hops]);
 
@@ -167,8 +140,8 @@ export const GraphCanvas: React.FC<GraphCanvasProps> = ({
 
   // Clean, strictly validated graph data with no dangling links
   const graphData = useMemo(() => {
-    const rawNodes = nodes && nodes.length > 0 ? nodes : FALLBACK_NODES;
-    const rawEdges = edges && edges.length > 0 ? edges : FALLBACK_EDGES;
+    const rawNodes = nodes || [];
+    const rawEdges = edges || [];
 
     const validNodes = rawNodes.map((n) => {
       const id = String(n.id || (n as any).name || '');
@@ -552,7 +525,15 @@ export const GraphCanvas: React.FC<GraphCanvasProps> = ({
         />
         <div className="absolute inset-0 pointer-events-none bg-[radial-gradient(ellipse_at_center,transparent_40%,var(--bg-inset)_100%)]" />
 
-        {viewMode === 'graph' ? (
+        {nodes.length === 0 ? (
+          <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-6 text-[var(--text-secondary)]">
+            <Network size={36} className="text-[var(--text-muted)] mb-3 opacity-60" />
+            <div className="font-semibold text-sm text-[var(--text-primary)]">No graph data yet</div>
+            <div className="text-xs text-[var(--text-muted)] max-w-sm mt-1">
+              Select or bootstrap a tenant graph to view service dependencies and live telemetry blast radius.
+            </div>
+          </div>
+        ) : viewMode === 'graph' ? (
           <>
             {/* Left toolbar */}
             <div className="absolute left-4 top-4 z-10 flex flex-col gap-1 p-1 rounded-2xl glass shadow-lg">

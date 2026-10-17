@@ -275,10 +275,11 @@ export async function loadScenario(scenarioId: string, tenant: string = 'storefr
 
 export async function runIncidentCrew(
   payload: {
-    alert: { service: string; text: string };
+    alert: { service: string; text: string; severity?: string };
     scenario_id?: string;
     mode?: string;
     auto_approve?: boolean;
+    sync?: boolean;
   },
   tenant: string = 'storefront'
 ) {
@@ -287,8 +288,84 @@ export async function runIncidentCrew(
     headers: { 'X-Tenant': tenant, 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   });
-  if (!res.ok) throw new Error('Failed to run incident crew');
+  if (!res.ok && res.status !== 202) throw new Error('Failed to run incident crew');
   return res.json();
+}
+
+export function subscribeIncidentStream(
+  incidentId: string,
+  tenant: string = 'storefront',
+  lastEventId?: string | null,
+  onEvent?: (event: SSEEvent) => void,
+  onError?: (err: any) => void
+): () => void {
+  const params = new URLSearchParams({ tenant });
+  if (lastEventId) {
+    params.set('last_event_id', lastEventId);
+  }
+  const url = `/api/incidents/${incidentId}/stream?${params.toString()}`;
+  const es = new EventSource(url);
+
+  es.onmessage = (msg) => {
+    try {
+      const data = JSON.parse(msg.data);
+      if (onEvent) onEvent(data);
+    } catch (e) {
+      console.warn('Failed to parse SSE message:', e);
+    }
+  };
+
+  const eventTypes = [
+    'incident_opened',
+    'agent_started',
+    'tool_called',
+    'observation_created',
+    'hypotheses_ranked',
+    'conflict_flagged',
+    'evidence_requested',
+    'action_proposed',
+    'approval_needed',
+    'action_approved',
+    'action_executed',
+    'outcome_verified',
+    'incident_closed',
+    'ping',
+  ];
+
+  eventTypes.forEach((evt) => {
+    es.addEventListener(evt, (e: any) => {
+      try {
+        const data = JSON.parse(e.data);
+        if (onEvent) onEvent(data);
+      } catch (err) {
+        console.warn(`Failed to parse SSE ${evt} event:`, err);
+      }
+    });
+  });
+
+  es.onerror = (err) => {
+    if (onError) onError(err);
+  };
+
+  return () => {
+    es.close();
+  };
+}
+
+export async function getSystemStatus(): Promise<{
+  llm_provider: string;
+  llm_status: 'live' | 'degraded';
+  telemetry_source: string;
+  embeddings_backend: string;
+  github_repo: string;
+}> {
+  try {
+    const res = await fetch('/api/system/status');
+    if (!res.ok) return { llm_provider: 'none', llm_status: 'degraded', telemetry_source: 'simulator', embeddings_backend: 'hash', github_repo: '' };
+    return await res.json();
+  } catch {
+    return { llm_provider: 'none', llm_status: 'degraded', telemetry_source: 'simulator', embeddings_backend: 'hash', github_repo: '' };
+  }
 }
 
 export async function getIncident(incidentId: string, tenant: string = 'storefront'): Promise<IncidentStateResponse> {

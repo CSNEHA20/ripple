@@ -64,8 +64,16 @@ class Settings(BaseSettings):
     nvidia_api_key: str | None = None
     nvidia_base_url: str = "https://integrate.api.nvidia.com/v1"
     nemotron_model: str = "nvidia/llama-3.1-nemotron-70b-instruct"
+    llm_provider: str | None = None
+    embeddings_backend: str = "semantic"
     github_token: str | None = None
-    data_dir: str = "/app/data"
+    github_repo: str = "GoogleCloudPlatform/microservices-demo"
+    data_dir: str = "data"
+    webhook_secret: str | None = None
+    slack_webhook_url: str | None = None
+    prometheus_url: str = "http://localhost:9090"
+    telemetry_source: str = "simulator"
+    api_key_header: str = "X-API-Key"
 
     model_config = SettingsConfigDict(
         env_file=".env",
