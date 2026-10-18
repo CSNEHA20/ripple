@@ -1,0 +1,121 @@
+{
+  "benchmark_protocol_version": "v2.0",
+  "pre_registered_ts": "2026-10-16T06:00:00Z",
+  "description": "Pre-registered ground-truth labels for Ripple memory-on vs memory-off benchmark evaluation.",
+  "scenarios": {
+    "sc_repeated_01": {
+      "family": "repeated",
+      "root_cause_service": "paymentservice",
+      "root_cause_type": "bad_deploy",
+      "correct_runbook": "rb_rollback",
+      "memory_should_help": true,
+      "historical_counterpart": "inc_hist_01"
+    },
+    "sc_repeated_02": {
+      "family": "repeated",
+      "root_cause_service": "recommendationservice",
+      "root_cause_type": "memory_leak",
+      "correct_runbook": "rb_restart",
+      "memory_should_help": true,
+      "historical_counterpart": "inc_hist_05"
+    },
+    "sc_repeated_03": {
+      "family": "repeated",
+      "root_cause_service": "currencyservice",
+      "root_cause_type": "upstream_timeout",
+      "correct_runbook": "rb_circuit_breaker",
+      "memory_should_help": true,
+      "historical_counterpart": "inc_hist_03"
+    },
+    "sc_variant_01": {
+      "family": "variant",
+      "root_cause_service": "productcatalogservice",
+      "root_cause_type": "bad_deploy",
+      "correct_runbook": "rb_rollback",
+      "memory_should_help": true,
+      "notes": "Tests cross-service generalization of bad deployment rollback."
+    },
+    "sc_variant_02": {
+      "family": "variant",
+      "root_cause_service": "shippingservice",
+      "root_cause_type": "upstream_timeout",
+      "correct_runbook": "rb_circuit_breaker",
+      "memory_should_help": true,
+      "notes": "Tests cross-service generalization of external provider circuit breaker."
+    },
+    "sc_variant_03": {
+      "family": "variant",
+      "root_cause_service": "checkoutservice",
+      "root_cause_type": "resource_exhaustion",
+      "correct_runbook": "rb_scale_up",
+      "memory_should_help": true,
+      "notes": "Tests cross-service generalization of horizontal pod scale up."
+    },
+    "sc_novel_01": {
+      "family": "novel",
+      "root_cause_service": "adservice",
+      "root_cause_type": "thread_deadlock",
+      "correct_runbook": "rb_config_revert",
+      "memory_should_help": false,
+      "notes": "No matching history; graph exploration and fresh config changes dictate diagnosis."
+    },
+    "sc_novel_02": {
+      "family": "novel",
+      "root_cause_service": "emailservice",
+      "root_cause_type": "worker_exhaustion",
+      "correct_runbook": "rb_restart",
+      "memory_should_help": false,
+      "notes": "No matching history; async uncritical worker failure."
+    },
+    "sc_novel_03": {
+      "family": "novel",
+      "root_cause_service": "frontend",
+      "root_cause_type": "bad_deploy",
+      "correct_runbook": "rb_rollback",
+      "memory_should_help": false,
+      "notes": "No matching history for header parsing corruption; fresh deploy in window guides diagnosis."
+    },
+    "sc_stale_trap_01": {
+      "family": "stale_trap",
+      "root_cause_service": "cartservice",
+      "root_cause_type": "transient_deadlock",
+      "correct_runbook": "rb_restart",
+      "memory_should_help": false,
+      "stale_runbook": "rb_cache_flush",
+      "closed_edge": "cartservice->redis-cart",
+      "architecture_change": "ac_cart_redis_decouple",
+      "notes": "Memory must NOT recommend rb_cache_flush because the assumed dependency was closed."
+    },
+    "sc_stale_trap_02": {
+      "family": "stale_trap",
+      "root_cause_service": "checkoutservice",
+      "root_cause_type": "bad_deploy",
+      "correct_runbook": "rb_rollback",
+      "memory_should_help": false,
+      "stale_runbook": "rb_payment_mock_failover",
+      "closed_edge": "checkoutservice->mock-merchant-gateway",
+      "architecture_change": "ac_checkout_gateway_route",
+      "notes": "Memory must NOT recommend legacy direct failover."
+    },
+    "sc_misleading_01": {
+      "family": "misleading_memory",
+      "root_cause_service": "currencyservice",
+      "root_cause_type": "upstream_timeout",
+      "correct_runbook": "rb_circuit_breaker",
+      "memory_should_help": false,
+      "misleading_service": "paymentservice",
+      "misleading_runbook": "rb_rollback",
+      "notes": "Alert resembles historical payment cascade, but payment is healthy; memory can hurt if graph evidence is ignored."
+    },
+    "sc_misleading_02": {
+      "family": "misleading_memory",
+      "root_cause_service": "loadgenerator",
+      "root_cause_type": "traffic_flood",
+      "correct_runbook": "rb_rate_limit",
+      "memory_should_help": false,
+      "misleading_service": "redis-cart",
+      "misleading_runbook": "rb_restart",
+      "notes": "Alert resembles historical cart exhaustion, but cause is upstream traffic flood."
+    }
+  }
+}
