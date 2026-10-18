@@ -1,0 +1,14 @@
+{
+  "selected_runbook_id": "rb_rollback",
+  "runbook_title": "Rollback Recent Deployment",
+  "is_applicable": true,
+  "status_update": "Investigating degraded performance on shippingservice. Root cause identified as shippingservice. Prepared mitigation plan 'Rollback Recent Deployment'.",
+  "paged_people": [
+    "averikok",
+    "elena-k"
+  ],
+  "proposed_remediation": "Propose Rollback Recent Deployment for shippingservice [rb_rollback]",
+  "action_class": "needs_approval",
+  "source": "replay",
+  "cached_at": 1792326931.983039
+}

@@ -1,0 +1,9 @@
+{
+  "incident_id": "inc_17df7900",
+  "observed_outcome": "resolved",
+  "metrics_summary": "Post-intervention check on paymentservice: Service health normalized across 1 validation samples: error rate dropped to 0.0% (baseline: 0.0%, threshold: 2.0%), p95 latency stabilized at 27.0ms (baseline: 21.0ms, threshold: 200.0ms).",
+  "summary": "Verifier confirmed resolved outcome for rb_rollback [hyp_inc_17df7900_paymentservice].",
+  "resolution_confirmed": true,
+  "source": "replay",
+  "cached_at": 1792326141.3602567
+}

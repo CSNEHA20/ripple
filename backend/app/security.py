@@ -4,6 +4,7 @@ import json
 import logging
 import os
 import time
+import uuid
 from typing import Any
 from fastapi import Header, HTTPException, Request, Security, Depends
 from fastapi.security.api_key import APIKeyHeader
@@ -28,11 +29,25 @@ ROLE_LEVELS = {
     "admin": 3,
 }
 
-API_KEYS_FILE = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-    "data",
-    "api_keys.json",
-)
+def _get_data_dirs() -> list[str]:
+    dirs = []
+    if os.environ.get("DATA_DIR"):
+        dirs.append(os.environ["DATA_DIR"])
+    if os.path.exists("/app/data") and "/app/data" not in dirs:
+        dirs.append("/app/data")
+    backend_app_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    repo_root = os.path.dirname(backend_app_dir)
+    repo_data = os.path.join(repo_root, "data")
+    if os.path.exists(repo_data) and repo_data not in dirs:
+        dirs.append(repo_data)
+    backend_data = os.path.join(backend_app_dir, "data")
+    if os.path.exists(backend_data) and backend_data not in dirs:
+        dirs.append(backend_data)
+    if not dirs:
+        dirs.append(os.path.join(backend_app_dir, "data"))
+    return dirs
+
+API_KEYS_FILE = os.path.join(_get_data_dirs()[0], "api_keys.json")
 
 # Hashes of default insecure keys that were previously published in example configs / docs.
 # In production, Ripple strictly refuses to start if any of these default keys are registered.
@@ -44,6 +59,63 @@ DEFAULT_INSECURE_KEY_HASHES: set[str] = {
     "f45a4c42c740c0b37dce3200f78241c4565d6417dad49d981eec18857972c11d",
     "a71973e3967370d7f423f612d51a6f9619419875626f00f6ca4f4c34b92668c2",
 }
+
+# Deny list of published default webhook tokens and secrets (Z2)
+DEFAULT_INSECURE_WEBHOOK_TOKENS: set[str] = {
+    "ripple_alertmanager_token_secret",
+    "alertmanager_token",
+    "default_token",
+    "token",
+}
+
+DEFAULT_INSECURE_WEBHOOK_SECRETS: set[str] = {
+    "14cdb1d2c02bcdd2c1cce668a86d2ba1bdcdfb30affb4dc9",
+    "secret",
+    "webhook_secret",
+    "default_secret",
+    "ripple_secret",
+}
+
+# Short-lived stream tokens scoped to incident and tenant (Z4)
+# token -> {"incident_id": str, "tenant_id": str, "role": str, "expires_at": float}
+_STREAM_TOKENS: dict[str, dict[str, Any]] = {}
+
+
+def create_stream_token(
+    incident_id: str,
+    tenant_id: str,
+    role: str = "viewer",
+    expires_in_seconds: float = 300.0,
+) -> str:
+    """Generate short-lived, incident-and-tenant-scoped token for SSE streaming without exposing API keys in URLs."""
+    raw_token = f"st_{uuid.uuid4().hex}"
+    expires_at = time.time() + expires_in_seconds
+    _STREAM_TOKENS[raw_token] = {
+        "incident_id": incident_id,
+        "tenant_id": sanitize_tenant_id(tenant_id),
+        "role": role,
+        "expires_at": expires_at,
+    }
+    return raw_token
+
+
+def verify_stream_token(token: str, incident_id: str) -> dict[str, Any] | None:
+    """Validate that stream token exists, is not expired, and matches requested incident."""
+    now = time.time()
+    # Evict expired tokens
+    expired = [k for k, v in _STREAM_TOKENS.items() if v.get("expires_at", 0) < now]
+    for k in expired:
+        _STREAM_TOKENS.pop(k, None)
+
+    rec = _STREAM_TOKENS.get(token)
+    if not rec:
+        return None
+    if rec.get("expires_at", 0) < now:
+        _STREAM_TOKENS.pop(token, None)
+        return None
+    if rec.get("incident_id") != incident_id:
+        return None
+    return rec
 
 # Initial dev seed records (hashed only, no plaintext keys in source).
 # Strictly ignored when ENVIRONMENT=production.
@@ -106,27 +178,34 @@ def _hash_key(key: str) -> str:
 
 
 def _save_keys_store(store: dict[str, dict[str, Any]]) -> None:
-    """Save persistent API key store to disk."""
-    try:
-        os.makedirs(os.path.dirname(API_KEYS_FILE), exist_ok=True)
-        with open(API_KEYS_FILE, "w", encoding="utf-8") as f:
-            json.dump(store, f, indent=2)
-    except Exception as e:
-        logger.warning(f"Failed to persist API keys to {API_KEYS_FILE}: {e}")
+    """Save persistent API key store to disk across all discovered data directories."""
+    for d in _get_data_dirs():
+        try:
+            os.makedirs(d, exist_ok=True)
+            p = os.path.join(d, "api_keys.json")
+            with open(p, "w", encoding="utf-8") as f:
+                json.dump(store, f, indent=2)
+        except Exception as e:
+            logger.warning(f"Failed to persist API keys to {d}: {e}")
 
 
 def _load_keys_store() -> dict[str, dict[str, Any]]:
     """Load API key records from persistent disk store, seed file, or environment."""
     store: dict[str, dict[str, Any]] = {}
 
-    # 1. Primary disk storage
-    if os.path.exists(API_KEYS_FILE):
-        try:
-            with open(API_KEYS_FILE, "r", encoding="utf-8") as f:
-                store = json.load(f)
-                return store
-        except Exception as e:
-            logger.warning(f"Failed to read API keys from {API_KEYS_FILE}: {e}")
+    # 1. Primary disk storage across candidate directories
+    for d in _get_data_dirs():
+        p = os.path.join(d, "api_keys.json")
+        if os.path.exists(p):
+            try:
+                with open(p, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    if data and isinstance(data, dict):
+                        store.update(data)
+            except Exception as e:
+                logger.warning(f"Failed to read API keys from {p}: {e}")
+    if store:
+        return store
 
     # 2. Seed file (if configured and exists)
     seed_path = getattr(settings, "api_keys_seed_file", "data/api_keys_seed.json")
@@ -254,6 +333,12 @@ def lookup_api_key(raw_key: str) -> dict[str, Any] | None:
     h = _hash_key(raw_key)
     rec = _DYNAMIC_API_KEYS.get(h)
     if not rec:
+        # Re-check disk store in case key was registered by an external process
+        disk_keys = _load_keys_store()
+        if h in disk_keys:
+            _DYNAMIC_API_KEYS[h] = disk_keys[h]
+            rec = disk_keys[h]
+    if not rec:
         return None
     if rec.get("revoked", False):
         raise HTTPException(status_code=401, detail="API key has been revoked")
@@ -264,12 +349,20 @@ def lookup_api_key(raw_key: str) -> dict[str, Any] | None:
 
 
 def check_default_keys_in_production() -> None:
-    """In production, refuse to start if any default insecure key is registered."""
+    """In production, refuse to start if any default insecure key or default webhook credential is configured."""
     if settings.environment == "production":
         for h, rec in _DYNAMIC_API_KEYS.items():
             if not rec.get("revoked", False) and h in DEFAULT_INSECURE_KEY_HASHES:
                 logger.critical("FATAL: Default insecure API key is registered in production! Refusing to start.")
                 raise RuntimeError("FATAL: Default insecure API key is registered in production! Refusing to start.")
+
+        if settings.webhook_token and settings.webhook_token.strip() in DEFAULT_INSECURE_WEBHOOK_TOKENS:
+            logger.critical("FATAL: Default insecure WEBHOOK_TOKEN is configured in production! Refusing to start.")
+            raise RuntimeError("FATAL: Default insecure WEBHOOK_TOKEN is configured in production! Refusing to start.")
+
+        if settings.webhook_secret and settings.webhook_secret.strip() in DEFAULT_INSECURE_WEBHOOK_SECRETS:
+            logger.critical("FATAL: Default insecure WEBHOOK_SECRET is configured in production! Refusing to start.")
+            raise RuntimeError("FATAL: Default insecure WEBHOOK_SECRET is configured in production! Refusing to start.")
 
 
 def _load_dedupe_cache() -> dict[str, float]:
@@ -378,20 +471,40 @@ def authenticate_api_key(
     api_key: str | None = Security(api_key_header_scheme),
 ) -> dict[str, Any]:
     """Strictly authenticate API key, enforce tenancy isolation, and return credentials."""
-    # Also check Bearer Authorization or stream query param (?api_key= or ?token=)
+    # Check Bearer Authorization or X-API-Key header
     token = api_key if isinstance(api_key, str) else None
     if not token:
         auth_header = request.headers.get("authorization") or request.headers.get("Authorization")
         if auth_header and auth_header.lower().startswith("bearer "):
             token = auth_header[7:].strip()
-    if not token:
-        token = request.query_params.get("api_key") or request.query_params.get("token")
+
+    # URL query parameter check (?api_key= or ?token= or ?stream_token=)
+    query_param_token = request.query_params.get("stream_token") or request.query_params.get("token") or request.query_params.get("api_key")
+    if query_param_token and not token:
+        # Check if it's a valid short-lived stream token
+        stream_rec = _STREAM_TOKENS.get(query_param_token)
+        if stream_rec and stream_rec.get("expires_at", 0) >= time.time():
+            return {
+                "tenant_id": stream_rec["tenant_id"],
+                "role": stream_rec.get("role", "viewer"),
+                "name": "Stream Token Caller",
+                "authenticated": True,
+                "is_stream_token": True,
+                "incident_id": stream_rec.get("incident_id"),
+            }
+        # If someone is passing a long-lived key in the URL, reject it!
+        if lookup_api_key(query_param_token):
+            raise HTTPException(
+                status_code=400,
+                detail="Long-lived API keys are prohibited in URL query parameters. Pass credentials via Authorization or X-API-Key header, or request a short-lived stream token via POST /api/incidents/{id}/stream-token.",
+            )
+        raise HTTPException(status_code=401, detail="Invalid or expired stream token")
 
     requested_tenant = request.headers.get("x-tenant") or request.query_params.get("tenant")
     if requested_tenant:
         requested_tenant = sanitize_tenant_id(requested_tenant)
 
-    # 1. Key is provided -> must be verified against store
+    # 1. Key is provided via header -> verify against store
     if token:
         key_record = lookup_api_key(token)
         if not key_record:

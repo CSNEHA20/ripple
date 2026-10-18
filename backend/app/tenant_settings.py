@@ -2,6 +2,7 @@ import base64
 import hashlib
 import json
 import logging
+import os
 from typing import Any
 from cryptography.fernet import Fernet
 from app.config import settings
@@ -40,49 +41,141 @@ DEFAULT_KEYWORD_HINTS: dict[str, list[str]] = {
 # Tenant-scoped in-memory integration configuration store
 _TENANT_INTEGRATIONS: dict[str, dict[str, Any]] = {}
 
+def _get_data_dirs() -> list[str]:
+    dirs = []
+    if os.environ.get("DATA_DIR"):
+        dirs.append(os.environ["DATA_DIR"])
+    if os.path.exists("/app/data") and "/app/data" not in dirs:
+        dirs.append("/app/data")
+    backend_app_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    repo_root = os.path.dirname(backend_app_dir)
+    repo_data = os.path.join(repo_root, "data")
+    if os.path.exists(repo_data) and repo_data not in dirs:
+        dirs.append(repo_data)
+    backend_data = os.path.join(backend_app_dir, "data")
+    if os.path.exists(backend_data) and backend_data not in dirs:
+        dirs.append(backend_data)
+    if not dirs:
+        dirs.append(os.path.join(backend_app_dir, "data"))
+    return dirs
 
-def _get_cipher() -> Fernet:
-    """Generate deterministic Fernet cipher based on webhook secret or seed."""
+ENCRYPTION_KEY_FILE = os.path.join(_get_data_dirs()[0], "settings_encryption.key")
+
+
+def _resolve_active_key_bytes() -> bytes:
+    """Resolve dedicated encryption key bytes.
+    In production: strictly requires SETTINGS_ENCRYPTION_KEY to be configured.
+    In development: reads from data/settings_encryption.key or generates and persists a new Fernet key.
+    """
+    configured = getattr(settings, "settings_encryption_key", None) or os.environ.get("SETTINGS_ENCRYPTION_KEY")
+    if configured and configured.strip():
+        raw = configured.strip()
+        # If it's a standard Fernet key (32 url-safe base64 bytes)
+        try:
+            return raw.encode("utf-8")
+        except Exception:
+            return base64.urlsafe_b64encode(hashlib.sha256(raw.encode("utf-8")).digest())
+
+    if settings.environment == "production":
+        logger.critical("FATAL: SETTINGS_ENCRYPTION_KEY must be configured in production environment.")
+        raise RuntimeError("FATAL: SETTINGS_ENCRYPTION_KEY must be configured when ENVIRONMENT=production.")
+
+    # Development / Test auto-provisioning outside of source tree
+    try:
+        for d in _get_data_dirs():
+            cand = os.path.join(d, "settings_encryption.key")
+            if os.path.exists(cand):
+                with open(cand, "r", encoding="utf-8") as f:
+                    k = f.read().strip()
+                    if k:
+                        return k.encode("utf-8")
+
+        # Generate and persist new development key across all candidate data dirs
+        new_key = Fernet.generate_key().decode("utf-8")
+        for d in _get_data_dirs():
+            try:
+                os.makedirs(d, exist_ok=True)
+                cand = os.path.join(d, "settings_encryption.key")
+                with open(cand, "w", encoding="utf-8") as f:
+                    f.write(new_key)
+            except Exception:
+                pass
+        return new_key.encode("utf-8")
+    except Exception as e:
+        logger.debug(f"Could not load/save dev key: {e}")
+        # Deterministic fallback for dev memory without hardcoded production salts
+        seed = "ripple_development_local_secrets_key_2026".encode("utf-8")
+        return base64.urlsafe_b64encode(hashlib.sha256(seed).digest())
+
+
+def _get_active_cipher() -> Fernet:
+    """Returns active v2 Fernet cipher using dedicated SETTINGS_ENCRYPTION_KEY."""
+    return Fernet(_resolve_active_key_bytes())
+
+
+def _get_legacy_v1_cipher() -> Fernet:
+    """Returns v1 legacy cipher for migrating secrets previously encrypted under older keys."""
+    prev = getattr(settings, "settings_encryption_key_previous", None) or os.environ.get("SETTINGS_ENCRYPTION_KEY_PREVIOUS")
+    if prev and prev.strip():
+        try:
+            return Fernet(prev.strip().encode("utf-8"))
+        except Exception:
+            return Fernet(base64.urlsafe_b64encode(hashlib.sha256(prev.strip().encode("utf-8")).digest()))
+    # Legacy fallback: earlier versions derived from webhook_secret or salt
     seed = (settings.webhook_secret or "ripple_default_encryption_salt_2026").encode("utf-8")
-    key = base64.urlsafe_b64encode(hashlib.sha256(seed).digest())
-    return Fernet(key)
+    return Fernet(base64.urlsafe_b64encode(hashlib.sha256(seed).digest()))
 
 
 def encrypt_secret(val: str | None) -> str | None:
-    """Encrypt secret string at rest using Fernet with enc:v1: prefix."""
+    """Encrypt secret string at rest using active cipher with enc:v2: prefix.
+    If given an enc:v1: secret, decrypts and upgrades to enc:v2: for key rotation.
+    """
     if not val:
         return None
-    if val.startswith("enc:v1:"):
+    if val.startswith("enc:v2:"):
         return val
+    if val.startswith("enc:v1:"):
+        # Re-encrypt rotation: decrypt v1 and encrypt as v2
+        decrypted = decrypt_secret(val)
+        if decrypted:
+            val = decrypted
     try:
-        cipher = _get_cipher()
+        cipher = _get_active_cipher()
         encrypted = cipher.encrypt(val.encode("utf-8")).decode("utf-8")
-        return f"enc:v1:{encrypted}"
+        return f"enc:v2:{encrypted}"
     except Exception as e:
         logger.debug(f"Failed to encrypt secret: {e}")
         return val
 
 
 def decrypt_secret(val: str | None) -> str | None:
-    """Decrypt secret string if prefixed with enc:v1:, else return as-is."""
+    """Decrypt secret string supporting version prefixes (enc:v2:, enc:v1:), else return as-is."""
     if not val:
         return None
-    if not val.startswith("enc:v1:"):
-        return val
-    try:
-        cipher = _get_cipher()
-        token = val[len("enc:v1:"):]
-        return cipher.decrypt(token.encode("utf-8")).decode("utf-8")
-    except Exception as e:
-        logger.debug(f"Failed to decrypt secret: {e}")
-        return val
+    if val.startswith("enc:v2:"):
+        try:
+            cipher = _get_active_cipher()
+            token = val[len("enc:v2:"):]
+            return cipher.decrypt(token.encode("utf-8")).decode("utf-8")
+        except Exception as e:
+            logger.debug(f"Failed to decrypt v2 secret: {e}")
+            return val
+    if val.startswith("enc:v1:"):
+        try:
+            cipher = _get_legacy_v1_cipher()
+            token = val[len("enc:v1:"):]
+            return cipher.decrypt(token.encode("utf-8")).decode("utf-8")
+        except Exception as e:
+            logger.debug(f"Failed to decrypt v1 secret: {e}")
+            return val
+    return val
 
 
 def mask_secret(val: str | None) -> str | None:
     """Mask secret value for safe logging and API presentation."""
     if not val:
         return None
-    raw = decrypt_secret(val) if val.startswith("enc:v1:") else val
+    raw = decrypt_secret(val) if (val.startswith("enc:v1:") or val.startswith("enc:v2:") or val.startswith("enc:")) else val
     if len(raw) <= 6:
         return "******"
     if raw.startswith("https://hooks.slack.com/"):

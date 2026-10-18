@@ -54,17 +54,19 @@ def gather_evidence_for_hypotheses(
         from app.scenarios.metrics import create_metric_snapshot
         adapter = get_adapter(graph.tenant_id)
         adapter_source_name = getattr(adapter, "source_name", "telemetry")
-        live_records = adapter.fetch_metrics(candidate_services, ref_ts=ref_ts)
-        for rec in live_records:
-            create_metric_snapshot(
-                graph=graph,
-                service_name=rec.service,
-                ts=rec.ts,
-                latency_p95_ms=rec.latency_p95_ms,
-                error_rate=rec.error_rate,
-                status=rec.status,
-                source=rec.source,
-            )
+        from app.adapters.base import SimulatorTelemetryAdapter
+        if not isinstance(adapter, SimulatorTelemetryAdapter):
+            live_records = adapter.fetch_metrics(candidate_services, ref_ts=ref_ts)
+            for rec in live_records:
+                create_metric_snapshot(
+                    graph=graph,
+                    service_name=rec.service,
+                    ts=rec.ts,
+                    latency_p95_ms=rec.latency_p95_ms,
+                    error_rate=rec.error_rate,
+                    status=rec.status,
+                    source=rec.source,
+                )
     except Exception as e:
         telemetry_degraded = True
         telemetry_error_msg = str(e)
@@ -119,8 +121,9 @@ def gather_evidence_for_hypotheses(
 
     health_res = service_health(graph, services=candidate_services, ts=ref_ts)
     trace.merge(health_res.trace)
+    records = health_res.data.get("metrics") or health_res.data.get("health", [])
     health_map: dict[str, dict[str, Any]] = {
-        item["service"]: item for item in health_res.data.get("health", [])
+        item["service"]: item for item in records
     }
 
     # Pre-fetch similar incidents if alert text is present

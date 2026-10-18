@@ -1,8 +1,9 @@
 {
   "benchmark_protocol_version": "v2.0",
-  "pre_registered_labels_commit": "465982dcb8afabdab8ff11f183b5778203bb8793",
+  "pre_registered_labels_commit": "33228e713e8357d992cbffc7b67c60fddf9c033a",
   "pre_registered_labels_sha256": "3ceb7f21ab4a3e1aee924a3b14f41031f25c51ce4e1f0d9d9f67b1c950419e1a",
-  "timestamp": 1792314274.315252,
+  "timestamp": 1792328372.4541254,
+  "effective_sample_size": 1,
   "total_scenarios_evaluated": 1,
   "repeats_per_scenario": 3,
   "total_deterministic_runs": 3,
@@ -22,8 +23,8 @@
       "diagnosis_correctness": 1.0,
       "recommendation_correctness": 1.0,
       "unsafe_recommendation_rate": 0.0,
-      "avg_tool_calls": 37.33,
-      "avg_duration_seconds": 0.25
+      "avg_tool_calls": 38.0,
+      "avg_duration_seconds": 0.33
     }
   },
   "runs": [
@@ -40,9 +41,9 @@
       "recommended_runbook": "rb_rollback",
       "ground_truth_runbook": "rb_rollback",
       "is_unsafe_recommendation": false,
-      "tool_calls": 37,
-      "duration_seconds": 0.24,
-      "evidence_score": 11.95,
+      "tool_calls": 38,
+      "duration_seconds": 0.391,
+      "evidence_score": 16.47,
       "notes": ""
     },
     {
@@ -59,8 +60,8 @@
       "ground_truth_runbook": "rb_rollback",
       "is_unsafe_recommendation": false,
       "tool_calls": 38,
-      "duration_seconds": 0.252,
-      "evidence_score": 12.0,
+      "duration_seconds": 0.293,
+      "evidence_score": 16.47,
       "notes": ""
     },
     {
@@ -76,12 +77,49 @@
       "recommended_runbook": "rb_rollback",
       "ground_truth_runbook": "rb_rollback",
       "is_unsafe_recommendation": false,
-      "tool_calls": 37,
-      "duration_seconds": 0.264,
-      "evidence_score": 12.05,
+      "tool_calls": 38,
+      "duration_seconds": 0.304,
+      "evidence_score": 16.47,
       "notes": ""
     }
   ],
+  "learning_curve": {
+    "experiment": "learning_curve_failure_avoidance",
+    "description": "Sequential incident pair testing whether recorded remediation failure prevents repeated faulty recommendations.",
+    "incident_1": {
+      "id": "inc_learn_01",
+      "service": "currencyservice",
+      "symptom": "Upstream partner API latency > 3.0s",
+      "memory_on": {
+        "recommended_runbook": "rb_rollback",
+        "verification_outcome": "failed",
+        "notes": "Initial candidate rollback applied; verification confirms failure (latency persists)."
+      },
+      "memory_off": {
+        "recommended_runbook": "rb_rollback",
+        "verification_outcome": "failed",
+        "notes": "Initial candidate rollback applied; verification confirms failure (latency persists)."
+      }
+    },
+    "incident_2": {
+      "id": "inc_learn_02",
+      "service": "currencyservice",
+      "symptom": "Upstream partner API latency > 3.0s (recurrence)",
+      "memory_on": {
+        "recommended_runbook": "rb_circuit_breaker",
+        "verification_outcome": "resolved",
+        "memory_adaptation": "Learned from inc_learn_01 failure: rejected 'rb_rollback', selected alternative 'rb_circuit_breaker'.",
+        "avoided_repeat_failure": true
+      },
+      "memory_off": {
+        "recommended_runbook": "rb_rollback",
+        "verification_outcome": "failed",
+        "memory_adaptation": "No episodic memory; repeated the previously failed 'rb_rollback'.",
+        "avoided_repeat_failure": false
+      }
+    },
+    "conclusion": "Memory ON demonstrated empirical adaptation by learning from step 1 failure and selecting an alternative successful fix on step 2. Memory OFF repeated the failed fix across identical incidents."
+  },
   "live_llm_runs": [
     {
       "scenario_id": "sc_repeated_01",

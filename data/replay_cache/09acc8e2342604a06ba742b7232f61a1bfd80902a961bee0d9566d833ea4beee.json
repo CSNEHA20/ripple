@@ -1,0 +1,14 @@
+{
+  "top_cause": "Internal defect or regression in alerting service 'adservice' (alerting_service).",
+  "top_service": "adservice",
+  "evidence_score": 0.11,
+  "margin": 0.11,
+  "summary": "Investigator ranked root cause as 'adservice' with evidence score 0.11 and margin 0.11 [ev_hyp_inc_723af78d_adservice_dependency_path_support_1].",
+  "cited_evidence_ids": [
+    "ev_hyp_inc_723af78d_adservice_dependency_path_support_1",
+    "ev_hyp_inc_723af78d_adservice_upstream_suspect_support_2",
+    "ev_hyp_inc_723af78d_adservice_decision_support_4"
+  ],
+  "source": "replay",
+  "cached_at": 1792326957.5146694
+}

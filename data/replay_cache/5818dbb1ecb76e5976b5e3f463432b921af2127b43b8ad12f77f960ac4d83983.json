@@ -1,0 +1,15 @@
+{
+  "selected_runbook_id": "rb_rollback",
+  "runbook_title": "Rollback Recent Deployment",
+  "is_applicable": true,
+  "status_update": "Investigating degraded performance on productcatalogservice. Root cause identified as productcatalogservice. Prepared mitigation plan 'Rollback Recent Deployment'.",
+  "paged_people": [
+    "stevemcquaid",
+    "saksham-g",
+    "anna-p"
+  ],
+  "proposed_remediation": "Propose Rollback Recent Deployment for productcatalogservice [rb_rollback]",
+  "action_class": "needs_approval",
+  "source": "replay",
+  "cached_at": 1792326951.855352
+}

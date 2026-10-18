@@ -1,0 +1,13 @@
+{
+  "alerting_service": "recommendationservice (Citations: [inc_recommendationservice])",
+  "severity": "P2",
+  "blast_radius_count": 2,
+  "impacted_services": [
+    "frontend",
+    "loadgenerator"
+  ],
+  "summary": "Triage assessed alert on 'recommendationservice'. Blast radius: 2 downstream service(s) [frontend, loadgenerator]. Assigned severity P2.",
+  "suggested_focus": "Investigate upstream dependencies and recent changes affecting 'recommendationservice'.",
+  "source": "replay",
+  "cached_at": 1792326947.071354
+}

@@ -1,0 +1,14 @@
+{
+  "top_cause": "Internal defect or regression in alerting service 'checkoutservice' (alerting_service, recent_deployment).",
+  "top_service": "checkoutservice",
+  "evidence_score": 2.14,
+  "margin": 4.34,
+  "summary": "Investigator ranked root cause as 'checkoutservice' with evidence score 2.14 and margin 4.34 [ev_hyp_inc_f3aef220_checkoutservice_dependency_path_support_1].",
+  "cited_evidence_ids": [
+    "ev_hyp_inc_f3aef220_checkoutservice_dependency_path_support_1",
+    "ev_hyp_inc_f3aef220_checkoutservice_upstream_suspect_support_2",
+    "ev_hyp_inc_f3aef220_checkoutservice_recent_deploy_support_3"
+  ],
+  "source": "replay",
+  "cached_at": 1792326965.5046358
+}

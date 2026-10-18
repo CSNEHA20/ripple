@@ -1,0 +1,9 @@
+{
+  "incident_id": "inc_e358f56d",
+  "observed_outcome": "resolved",
+  "metrics_summary": "Post-intervention check on shippingservice: Service health normalized across 2 validation samples: error rate dropped to 0.0% (baseline: 12.0%, threshold: 14.4%), p95 latency stabilized at 29.0ms (baseline: 2800.0ms, threshold: 3360.0ms).",
+  "summary": "Verifier confirmed resolved outcome for rb_rollback [hyp_inc_e358f56d_shippingservice].",
+  "resolution_confirmed": true,
+  "source": "replay",
+  "cached_at": 1792326933.0047815
+}

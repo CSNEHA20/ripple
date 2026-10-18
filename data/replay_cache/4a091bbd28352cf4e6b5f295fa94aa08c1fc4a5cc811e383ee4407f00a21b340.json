@@ -1,0 +1,14 @@
+{
+  "alerting_service": "shippingservice (Citations: [inc_shippingservice], [inc_inc_hist_07])",
+  "severity": "P1",
+  "blast_radius_count": 3,
+  "impacted_services": [
+    "checkoutservice",
+    "frontend",
+    "loadgenerator"
+  ],
+  "summary": "Triage assessed alert on 'shippingservice'. Blast radius: 3 downstream service(s) [checkoutservice, frontend, loadgenerator]. Assigned severity P1 (recalled inc_inc_hist_07).",
+  "suggested_focus": "Investigate upstream dependencies and recent changes affecting 'shippingservice'.",
+  "source": "replay",
+  "cached_at": 1792326952.152771
+}

@@ -106,33 +106,58 @@ class ResponderAgent:
         ranked_rbs, rb_trace = rank_runbooks(graph, incident_ids=inc_ids)
         trace.merge(rb_trace)
 
-        # If memory recalled a specific proven runbook, prioritize it at the top of candidates
+        # Collect runbooks previously recorded as failed in memory
+        rejected_rb_ids: set[str] = set()
+        if self.memory_enabled:
+            for rj in recalled.get("rejected_runbooks", []):
+                rid = rj.get("runbook_id") or rj.get("id")
+                if rid:
+                    rejected_rb_ids.add(rid)
+            for rb in ranked_rbs:
+                if "failed" in rb.get("recalled_outcomes", []):
+                    rid = rb.get("runbook_id") or rb.get("id")
+                    if rid:
+                        rejected_rb_ids.add(rid)
+
+        # If memory recalled a specific proven runbook, prioritize it at the top of candidates (unless previously failed)
         if rec_rb_mem and isinstance(rec_rb_mem, dict):
             rec_id = rec_rb_mem.get("runbook_id") or rec_rb_mem.get("id")
-            if rec_id:
+            if rec_id and rec_id not in rejected_rb_ids:
                 existing = [rb for rb in ranked_rbs if (rb.get("runbook_id") or rb.get("id")) == rec_id]
                 if existing:
                     ranked_rbs.remove(existing[0])
                     ranked_rbs.insert(0, existing[0])
 
-        # 4. Tool 3: check_applicability for top candidate runbook
+        # 4. Tool 3: check_applicability for candidate runbooks with failure avoidance
         chosen_rb_id = None
         chosen_rb_title = ""
         is_applicable = False
         applicability_result = {}
         conflict_record = None
 
-        if ranked_rbs:
-            candidate_rb = ranked_rbs[0]
+        for idx, candidate_rb in enumerate(ranked_rbs):
             cand_id = candidate_rb.get("runbook_id") or candidate_rb.get("id")
+            if not cand_id:
+                continue
+
+            # Check if memory rejects this candidate due to recorded failure
+            if self.memory_enabled and cand_id in rejected_rb_ids:
+                reason = f"Runbook '{cand_id}' previously failed for similar incident in memory; rejecting to avoid repeating failed fix."
+                conflict_record = flag_conflict(
+                    graph=graph,
+                    incident_id=incident_id,
+                    agent_run_id=agent_run["id"],
+                    reason=reason,
+                    involves_node_ids=[cand_id],
+                )
+                logger.info(f"Memory avoidance: {reason}")
+                continue
+
             app_res, app_trace = check_applicability(graph, runbook_id=cand_id, as_of=ref_ts)
             trace.merge(app_trace)
-            applicability_result = app_res
 
-            # Check if applicability failed (e.g. stale-fix trap)
             has_app_conflict, app_reason, involved_nodes = check_applicability_conflict(cand_id, app_res)
             if has_app_conflict:
-                # Flag Conflict on blackboard!
                 conflict_record = flag_conflict(
                     graph=graph,
                     incident_id=incident_id,
@@ -141,28 +166,27 @@ class ResponderAgent:
                     involves_node_ids=involved_nodes,
                 )
                 logger.warning(f"Applicability check failed for {cand_id}: {app_reason}. Flagged Conflict.")
+                continue
 
-                # Look for an alternative applicable runbook
-                for alt_rb in ranked_rbs[1:]:
-                    alt_id = alt_rb.get("runbook_id") or alt_rb.get("id")
-                    alt_app, alt_trace = check_applicability(graph, runbook_id=alt_id, as_of=ref_ts)
-                    trace.merge(alt_trace)
-                    if alt_app.get("applicable", False) or alt_app.get("is_applicable", False):
-                        chosen_rb_id = alt_id
-                        chosen_rb_title = alt_rb.get("title", alt_id)
-                        is_applicable = True
-                        break
-
-                if not chosen_rb_id:
-                    # Generic fallback mitigation
-                    chosen_rb_id = "rb_restart" if "deadlock" in str(payload).lower() else "rb_scale_up"
-                    chosen_rb_title = "Restart Service" if chosen_rb_id == "rb_restart" else "Scale Up Service Replicas"
-                    is_applicable = True
-            else:
+            if app_res.get("applicable", False) or app_res.get("is_applicable", False):
                 chosen_rb_id = cand_id
                 chosen_rb_title = candidate_rb.get("title", cand_id)
                 is_applicable = True
-        else:
+                applicability_result = app_res
+                break
+
+        if not chosen_rb_id and ranked_rbs:
+            if not self.memory_enabled:
+                # Without memory, repeat default top candidate even if it failed before
+                chosen_rb_id = ranked_rbs[0].get("runbook_id") or ranked_rbs[0].get("id")
+                chosen_rb_title = ranked_rbs[0].get("title", chosen_rb_id)
+                is_applicable = True
+            else:
+                # Generic fallback mitigation
+                chosen_rb_id = "rb_restart" if "deadlock" in str(payload).lower() else "rb_scale_up"
+                chosen_rb_title = "Restart Service" if chosen_rb_id == "rb_restart" else "Scale Up Service Replicas"
+                is_applicable = True
+        elif not chosen_rb_id:
             # Fallback default runbook
             chosen_rb_id = "rb_rollback"
             chosen_rb_title = "Rollback Service Deployment"

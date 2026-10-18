@@ -1,0 +1,14 @@
+{
+  "top_cause": "Upstream dependency failure in 'paymentservice' (1 hop(s) upstream; upstream_dependency).",
+  "top_service": "paymentservice",
+  "evidence_score": 0.3,
+  "margin": 0.23,
+  "summary": "Investigator ranked root cause as 'paymentservice' with evidence score 0.30 and margin 0.23 [ev_hyp_inc_84e6c6bd_paymentservice_dependency_path_support_1].",
+  "cited_evidence_ids": [
+    "ev_hyp_inc_84e6c6bd_paymentservice_dependency_path_support_1",
+    "ev_hyp_inc_84e6c6bd_paymentservice_upstream_suspect_support_2",
+    "ev_hyp_inc_84e6c6bd_paymentservice_decision_support_4"
+  ],
+  "source": "replay",
+  "cached_at": 1792326955.1393802
+}

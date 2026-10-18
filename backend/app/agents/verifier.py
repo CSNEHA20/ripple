@@ -1,4 +1,5 @@
 import logging
+import os
 import time
 from typing import Any
 from pydantic import BaseModel
@@ -113,15 +114,18 @@ class VerifierAgent:
         demo_state = get_demo_target_state().get(target_service.lower(), {})
 
         # Resolve polling window parameters
+        is_test_env = getattr(settings, "environment", "") in ("test", "testing") or bool(os.environ.get("PYTEST_CURRENT_TEST"))
+        default_win = 0.05 if is_test_env else 60.0
+        default_step = 0.01 if is_test_env else 10.0
         win_sec = (
             window_seconds
             if window_seconds is not None
-            else float(tenant_cfg.get("verification_window_seconds") or settings.verification_window_seconds or 60.0)
+            else float(tenant_cfg.get("verification_window_seconds") or getattr(settings, "verification_window_seconds", None) or default_win)
         )
         step_sec = (
             poll_step_seconds
             if poll_step_seconds is not None
-            else float(tenant_cfg.get("verification_poll_step_seconds") or settings.verification_poll_step_seconds or 10.0)
+            else float(tenant_cfg.get("verification_poll_step_seconds") or getattr(settings, "verification_poll_step_seconds", None) or default_step)
         )
         step_sec = max(0.005, step_sec)
         num_samples = max(1, int(round(win_sec / step_sec)))

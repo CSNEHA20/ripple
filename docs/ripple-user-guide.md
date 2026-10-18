@@ -454,4 +454,98 @@ To ensure complete transparency and scientific rigor, every metric, deployment, 
 
 ---
 
+## 9. Operations Runbook: Key Rotation, Backup & Restore (Z7)
+
+### 9.1 Secrets & Key Rotation Procedures
+
+#### Rotating Settings Encryption Key (`SETTINGS_ENCRYPTION_KEY`)
+Ripple uses versioned envelope encryption (`enc:v2:`) for tenant integration credentials. Rotating the encryption key does not require resetting credentials:
+
+1. **Generate a new Fernet key:**
+   ```bash
+   python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+   ```
+2. **Stage the rotation:** Set the new key as `SETTINGS_ENCRYPTION_KEY` and the retiring key as `SETTINGS_ENCRYPTION_KEY_PREVIOUS` in `.env`:
+   ```bash
+   SETTINGS_ENCRYPTION_KEY=<new_key_base64>
+   SETTINGS_ENCRYPTION_KEY_PREVIOUS=<old_key_base64>
+   ```
+3. **Re-encrypt secrets:** Trigger migration through the API or restart the backend container:
+   ```bash
+   docker compose restart backend
+   ```
+   On restart, the cipher validates existing credentials using `SETTINGS_ENCRYPTION_KEY_PREVIOUS`, decrypts `enc:v2:` or legacy `enc:v1:` payloads, and re-encrypts using the new key.
+4. **Finalize:** Remove `SETTINGS_ENCRYPTION_KEY_PREVIOUS` from `.env` once all secrets are rewritten.
+
+#### Rotating Webhook Tokens & Secrets
+Webhook tokens and HMAC secrets are completely isolated from settings encryption:
+1. Generate a new secret:
+   ```bash
+   python -c "import secrets; print(secrets.token_hex(24))"
+   ```
+2. Update `WEBHOOK_TOKEN` in `.env`.
+3. Template Alertmanager configuration:
+   ```bash
+   # Linux / macOS
+   sed "s/{{WEBHOOK_TOKEN}}/$WEBHOOK_TOKEN/g" deploy/alertmanager/alertmanager.yml.template > deploy/alertmanager/alertmanager.yml
+   # Windows PowerShell
+   (Get-Content deploy/alertmanager/alertmanager.yml.template).Replace('{{WEBHOOK_TOKEN}}', $env:WEBHOOK_TOKEN) | Set-Content deploy/alertmanager/alertmanager.yml
+   ```
+4. Restart containers:
+   ```bash
+   docker compose restart backend alertmanager
+   ```
+
+#### Rotating API Keys
+1. Issue a new hashed key:
+   ```bash
+   POST /api/security/keys
+   {"raw_key": "<new_secure_key>", "tenant_id": "storefront", "role": "admin"}
+   ```
+2. Revoke the retiring key:
+   ```bash
+   POST /api/security/keys/revoke
+   {"raw_key": "<old_retired_key>"}
+   ```
+
+---
+
+### 9.2 Backup & Disaster Recovery
+
+#### FalkorDB Graph Snapshot Backup & Restore
+FalkorDB persists graph topology and temporal memory to an RDB snapshot on disk.
+
+- **To Backup:**
+  ```bash
+  # Trigger synchronous dump
+  docker exec ripple-falkordb redis-cli SAVE
+  # Copy snapshot out of container
+  docker cp ripple-falkordb:/data/dump.rdb ./backups/falkordb_$(date +%Y%m%d_%H%M%S).rdb
+  ```
+
+- **To Restore:**
+  ```bash
+  docker compose stop falkordb
+  docker cp ./backups/falkordb_<timestamp>.rdb ripple-falkordb:/data/dump.rdb
+  docker compose start falkordb
+  ```
+
+#### Persistent State Directory Backup & Restore (`data/`)
+Ripple stores persistent API keys, stream mappings, idempotency keys, and event logs in `./data`:
+```bash
+# Backup
+tar -czvf ripple_state_backup_$(date +%Y%m%d_%H%M%S).tar.gz data/
+
+# Restore
+tar -xzvf ripple_state_backup_<timestamp>.tar.gz
+```
+Files protected:
+- `data/api_keys.json`: Hashed API credentials with role mappings.
+- `data/incident_tenants.json`: Incident-to-tenant isolation routing table.
+- `data/k8s_idempotency_keys.json`: Kubernetes executor restart-safe idempotency records.
+- `data/events/*.jsonl`: Append-only event stream histories for SSE reconnects.
+- `data/settings_encryption.key`: Auto-provisioned development cipher key.
+
+---
+
 *Ripple — Graph Hacks: Context for AI Agents (WeMakeDevs x FalkorDB)*

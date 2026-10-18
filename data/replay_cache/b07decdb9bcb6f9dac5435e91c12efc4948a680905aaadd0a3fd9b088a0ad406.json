@@ -1,0 +1,15 @@
+{
+  "selected_runbook_id": "rb_rollback",
+  "runbook_title": "Rollback Recent Deployment",
+  "is_applicable": true,
+  "status_update": "Investigating degraded performance on currencyservice. Root cause identified as currencyservice. Prepared mitigation plan 'Rollback Recent Deployment'.",
+  "paged_people": [
+    "mhausenblas",
+    "daniel-orozco",
+    "kenji-t"
+  ],
+  "proposed_remediation": "Propose Rollback Recent Deployment for currencyservice [rb_rollback]",
+  "action_class": "needs_approval",
+  "source": "replay",
+  "cached_at": 1792326929.0669878
+}

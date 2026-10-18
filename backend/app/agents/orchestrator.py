@@ -21,11 +21,26 @@ import os
 from app.config import settings
 from app.notifications.service import notify_incident_event
 
-EVENTS_PERSIST_DIR = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
-    "data",
-    "events",
-)
+def _get_data_dirs() -> list[str]:
+    dirs = []
+    if os.environ.get("DATA_DIR"):
+        dirs.append(os.environ["DATA_DIR"])
+    if os.path.exists("/app/data") and "/app/data" not in dirs:
+        dirs.append("/app/data")
+    backend_app_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    repo_root = os.path.dirname(backend_app_dir)
+    repo_data = os.path.join(repo_root, "data")
+    if os.path.exists(repo_data) and repo_data not in dirs:
+        dirs.append(repo_data)
+    backend_data = os.path.join(backend_app_dir, "data")
+    if os.path.exists(backend_data) and backend_data not in dirs:
+        dirs.append(backend_data)
+    if not dirs:
+        dirs.append(os.path.join(backend_app_dir, "data"))
+    return dirs
+
+EVENTS_PERSIST_DIR = os.path.join(_get_data_dirs()[0], "events")
+TENANT_MAP_FILE = os.path.join(_get_data_dirs()[0], "incident_tenants.json")
 
 
 class IncidentEventBus:
@@ -41,27 +56,51 @@ class IncidentEventBus:
         # Incident tenant tracking: incident_id -> tenant_id
         self._incident_tenants: dict[str, str] = {}
         try:
-            os.makedirs(EVENTS_PERSIST_DIR, exist_ok=True)
+            for d in _get_data_dirs():
+                mf = os.path.join(d, "incident_tenants.json")
+                if os.path.exists(mf):
+                    with open(mf, "r", encoding="utf-8") as f:
+                        data = json.load(f)
+                        if isinstance(data, dict):
+                            self._incident_tenants.update(data)
         except Exception:
             pass
 
     def set_incident_tenant(self, incident_id: str, tenant_id: str) -> None:
-        """Associate an incident with its tenant ID."""
+        """Associate an incident with its tenant ID and persist mapping to disk."""
         if incident_id and tenant_id:
             self._incident_tenants[incident_id] = str(tenant_id)
+            for d in _get_data_dirs():
+                try:
+                    os.makedirs(d, exist_ok=True)
+                    mf = os.path.join(d, "incident_tenants.json")
+                    with open(mf, "w", encoding="utf-8") as f:
+                        json.dump(self._incident_tenants, f)
+                except Exception:
+                    pass
 
     def get_incident_tenant(self, incident_id: str) -> str | None:
-        """Lookup tenant ID for an incident, checking memory, history, and disk logs."""
+        """Lookup tenant ID for an incident, checking memory, disk mapping, history, and disk logs."""
         if not incident_id:
             return None
         if incident_id in self._incident_tenants:
             return self._incident_tenants[incident_id]
 
+        try:
+            if os.path.exists(TENANT_MAP_FILE):
+                with open(TENANT_MAP_FILE, "r", encoding="utf-8") as f:
+                    disk_map = json.load(f)
+                    if incident_id in disk_map:
+                        self._incident_tenants[incident_id] = str(disk_map[incident_id])
+                        return self._incident_tenants[incident_id]
+        except Exception:
+            pass
+
         # Check in-memory history
         for ev in self._history.get(incident_id, []):
             t = ev.get("data", {}).get("tenant_id")
             if t:
-                self._incident_tenants[incident_id] = str(t)
+                self.set_incident_tenant(incident_id, str(t))
                 return str(t)
 
         # Check persisted events
@@ -69,34 +108,39 @@ class IncidentEventBus:
         for ev in persisted:
             t = ev.get("data", {}).get("tenant_id")
             if t:
-                self._incident_tenants[incident_id] = str(t)
+                self.set_incident_tenant(incident_id, str(t))
                 return str(t)
 
         return None
 
     def _persist_event(self, incident_id: str, event: dict[str, Any]) -> None:
-        """Append event to persistent JSONL log on disk."""
-        try:
-            os.makedirs(EVENTS_PERSIST_DIR, exist_ok=True)
-            log_path = os.path.join(EVENTS_PERSIST_DIR, f"{incident_id}.jsonl")
-            with open(log_path, "a", encoding="utf-8") as f:
-                f.write(json.dumps(event) + "\n")
-        except Exception as e:
-            logger.warning(f"Failed to persist SSE event to disk: {e}")
+        """Append event to persistent JSONL log on disk across candidate data dirs."""
+        for d in _get_data_dirs():
+            try:
+                edir = os.path.join(d, "events")
+                os.makedirs(edir, exist_ok=True)
+                log_path = os.path.join(edir, f"{incident_id}.jsonl")
+                with open(log_path, "a", encoding="utf-8") as f:
+                    f.write(json.dumps(event) + "\n")
+            except Exception as e:
+                logger.warning(f"Failed to persist SSE event to disk at {d}: {e}")
 
     def _load_persisted_events(self, incident_id: str) -> list[dict[str, Any]]:
         """Load persisted event history from disk if memory is empty."""
         events = []
-        log_path = os.path.join(EVENTS_PERSIST_DIR, f"{incident_id}.jsonl")
-        if os.path.exists(log_path):
-            try:
-                with open(log_path, "r", encoding="utf-8") as f:
-                    for line in f:
-                        line = line.strip()
-                        if line:
-                            events.append(json.loads(line))
-            except Exception as e:
-                logger.warning(f"Failed to load persisted SSE events from {log_path}: {e}")
+        for d in _get_data_dirs():
+            log_path = os.path.join(d, "events", f"{incident_id}.jsonl")
+            if os.path.exists(log_path):
+                try:
+                    with open(log_path, "r", encoding="utf-8") as f:
+                        for line in f:
+                            line = line.strip()
+                            if line:
+                                events.append(json.loads(line))
+                    if events:
+                        return events
+                except Exception as e:
+                    logger.warning(f"Failed to load persisted SSE events from {log_path}: {e}")
         return events
 
     def publish(self, incident_id: str, event_type: str, data: dict[str, Any]) -> dict[str, Any]:
@@ -114,6 +158,23 @@ class IncidentEventBus:
         }
         self._history[incident_id].append(event)
         self._persist_event(incident_id, event)
+        try:
+            from app.adapters.demo_target import (
+                record_ops_event_processed,
+                record_ops_incident_opened,
+                record_ops_incident_resolved,
+                record_ops_verification_outcome,
+            )
+            record_ops_event_processed()
+            if event_type == "incident_opened":
+                record_ops_incident_opened(str(data.get("tenant_id") or "storefront"))
+            elif event_type in ("incident_closed", "incident_resolved"):
+                record_ops_incident_resolved(str(data.get("tenant_id") or "storefront"))
+            elif event_type in ("outcome_verified", "action_verified"):
+                st = str(data.get("status") or "verified")
+                record_ops_verification_outcome(st)
+        except Exception:
+            pass
         queues = self._subscribers[incident_id]
         for q in list(queues):
             try:

@@ -1,0 +1,15 @@
+{
+  "selected_runbook_id": "rb_circuit_breaker",
+  "runbook_title": "Trip Circuit Breaker & Fallback",
+  "is_applicable": true,
+  "status_update": "Investigating degraded performance on productcatalogservice. Root cause identified as productcatalogservice. Prepared mitigation plan 'Trip Circuit Breaker & Fallback'.",
+  "paged_people": [
+    "stevemcquaid",
+    "saksham-g",
+    "anna-p"
+  ],
+  "proposed_remediation": "Propose Trip Circuit Breaker & Fallback for productcatalogservice [rb_circuit_breaker]",
+  "action_class": "reversible",
+  "source": "replay",
+  "cached_at": 1792326950.1194365
+}

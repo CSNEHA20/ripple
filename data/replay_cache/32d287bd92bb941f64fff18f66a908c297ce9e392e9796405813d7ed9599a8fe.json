@@ -1,0 +1,14 @@
+{
+  "alerting_service": "paymentservice (Citations: [inc_paymentservice], [inc_58cdf9f9])",
+  "severity": "P1",
+  "blast_radius_count": 3,
+  "impacted_services": [
+    "checkoutservice",
+    "frontend",
+    "loadgenerator"
+  ],
+  "summary": "Triage assessed alert on 'paymentservice'. Blast radius: 3 downstream service(s) [checkoutservice, frontend, loadgenerator]. Assigned severity P1 (recalled inc_58cdf9f9).",
+  "suggested_focus": "Investigate upstream dependencies and recent changes affecting 'paymentservice'.",
+  "source": "replay",
+  "cached_at": 1792325827.357288
+}

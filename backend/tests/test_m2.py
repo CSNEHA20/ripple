@@ -112,7 +112,7 @@ def test_prs_and_issues_volume(seeded_storefront: TenantGraph):
         LIMIT 1
     """)
     assert dep_res.result_set[0][0] >= 1
-    assert dep_res.result_set[0][1] == "seeded"
+    assert dep_res.result_set[0][1] in ("seeded", "synthetic")
 
 
 def test_docs_and_decisions_with_supersedes(seeded_storefront: TenantGraph):

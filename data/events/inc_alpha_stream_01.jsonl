@@ -1,0 +1,12 @@
+{"id": "inc_alpha_stream_01_1", "seq": 1, "incident_id": "inc_alpha_stream_01", "event": "incident_opened", "data": {"incident_id": "inc_alpha_stream_01", "tenant_id": "tenant_alpha"}, "ts": 1792327926.4683857}
+{"id": "inc_alpha_stream_01_2", "seq": 2, "incident_id": "inc_alpha_stream_01", "event": "agent_started", "data": {"agent": "Triage"}, "ts": 1792327926.4704487}
+{"id": "inc_alpha_stream_01_3", "seq": 3, "incident_id": "inc_alpha_stream_01", "event": "incident_closed", "data": {"incident_id": "inc_alpha_stream_01"}, "ts": 1792327926.4715266}
+{"id": "inc_alpha_stream_01_1", "seq": 1, "incident_id": "inc_alpha_stream_01", "event": "incident_opened", "data": {"incident_id": "inc_alpha_stream_01", "tenant_id": "tenant_alpha"}, "ts": 1792328224.6839077}
+{"id": "inc_alpha_stream_01_2", "seq": 2, "incident_id": "inc_alpha_stream_01", "event": "agent_started", "data": {"agent": "Triage"}, "ts": 1792328224.6849852}
+{"id": "inc_alpha_stream_01_3", "seq": 3, "incident_id": "inc_alpha_stream_01", "event": "incident_closed", "data": {"incident_id": "inc_alpha_stream_01"}, "ts": 1792328224.6860213}
+{"id": "inc_alpha_stream_01_1", "seq": 1, "incident_id": "inc_alpha_stream_01", "event": "incident_opened", "data": {"incident_id": "inc_alpha_stream_01", "tenant_id": "tenant_alpha"}, "ts": 1792328300.9761426}
+{"id": "inc_alpha_stream_01_2", "seq": 2, "incident_id": "inc_alpha_stream_01", "event": "agent_started", "data": {"agent": "Triage"}, "ts": 1792328300.9761426}
+{"id": "inc_alpha_stream_01_3", "seq": 3, "incident_id": "inc_alpha_stream_01", "event": "incident_closed", "data": {"incident_id": "inc_alpha_stream_01"}, "ts": 1792328300.9776525}
+{"id": "inc_alpha_stream_01_1", "seq": 1, "incident_id": "inc_alpha_stream_01", "event": "incident_opened", "data": {"incident_id": "inc_alpha_stream_01", "tenant_id": "tenant_alpha"}, "ts": 1792328320.4629}
+{"id": "inc_alpha_stream_01_2", "seq": 2, "incident_id": "inc_alpha_stream_01", "event": "agent_started", "data": {"agent": "Triage"}, "ts": 1792328320.4639316}
+{"id": "inc_alpha_stream_01_3", "seq": 3, "incident_id": "inc_alpha_stream_01", "event": "incident_closed", "data": {"incident_id": "inc_alpha_stream_01"}, "ts": 1792328320.4644535}

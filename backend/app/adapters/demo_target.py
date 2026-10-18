@@ -189,9 +189,60 @@ def get_service_state(service: str | None = None) -> dict[str, Any]:
     return DEMO_TARGET_STATE
 
 
+from collections import defaultdict
+
+_RIPPLE_OPS_METRICS: dict[str, Any] = {
+    "incidents_opened": defaultdict(int),
+    "incidents_resolved": defaultdict(int),
+    "verification_outcomes": {"verified": 0, "failed": 0, "inconclusive": 0},
+    "telemetry_degraded_total": 0,
+    "llm_degraded_total": 0,
+    "events_processed_total": 0,
+}
+
+
+def record_ops_incident_opened(tenant_id: str = "storefront") -> None:
+    _RIPPLE_OPS_METRICS["incidents_opened"][tenant_id] += 1
+
+
+def record_ops_incident_resolved(tenant_id: str = "storefront") -> None:
+    _RIPPLE_OPS_METRICS["incidents_resolved"][tenant_id] += 1
+
+
+def record_ops_verification_outcome(outcome: str) -> None:
+    norm = outcome.lower()
+    if norm not in _RIPPLE_OPS_METRICS["verification_outcomes"]:
+        _RIPPLE_OPS_METRICS["verification_outcomes"][norm] = 0
+    _RIPPLE_OPS_METRICS["verification_outcomes"][norm] += 1
+
+
+def record_ops_telemetry_degraded() -> None:
+    _RIPPLE_OPS_METRICS["telemetry_degraded_total"] += 1
+
+
+def record_ops_llm_degraded() -> None:
+    _RIPPLE_OPS_METRICS["llm_degraded_total"] += 1
+
+
+def record_ops_event_processed() -> None:
+    _RIPPLE_OPS_METRICS["events_processed_total"] += 1
+
+
+def get_ops_metrics_snapshot() -> dict[str, Any]:
+    return {
+        "incidents_opened": dict(_RIPPLE_OPS_METRICS["incidents_opened"]),
+        "incidents_resolved": dict(_RIPPLE_OPS_METRICS["incidents_resolved"]),
+        "verification_outcomes": dict(_RIPPLE_OPS_METRICS["verification_outcomes"]),
+        "telemetry_degraded_total": _RIPPLE_OPS_METRICS["telemetry_degraded_total"],
+        "llm_degraded_total": _RIPPLE_OPS_METRICS["llm_degraded_total"],
+        "events_processed_total": _RIPPLE_OPS_METRICS["events_processed_total"],
+    }
+
+
 def generate_prometheus_metrics_text() -> str:
-    """Generate authentic Prometheus text format metrics for all services.
-    Uses monotonically increasing counters and histogram buckets from the traffic simulator.
+    """Generate authentic Prometheus text format metrics for all services and Ripple system health.
+    Uses monotonically increasing counters and histogram buckets from the traffic simulator,
+    plus Ripple operational metrics (incidents, verifications, degradation counters).
     """
     _ensure_initialized()
     lines = [
@@ -217,6 +268,40 @@ def generate_prometheus_metrics_text() -> str:
                 lines.append(f'http_request_duration_seconds_bucket{{service="{svc}",le="{b_le}"}} {b_val}')
             lines.append(f'http_request_duration_seconds_sum{{service="{svc}"}} {c["duration_sum"]:.3f}')
             lines.append(f'http_request_duration_seconds_count{{service="{svc}"}} {c["duration_count"]}')
+
+    # Ripple Operational Metrics (Z7)
+    lines.append("# HELP ripple_incidents_opened_total Total number of incidents opened by Ripple.")
+    lines.append("# TYPE ripple_incidents_opened_total counter")
+    if _RIPPLE_OPS_METRICS["incidents_opened"]:
+        for t_id, cnt in sorted(_RIPPLE_OPS_METRICS["incidents_opened"].items()):
+            lines.append(f'ripple_incidents_opened_total{{tenant="{t_id}"}} {cnt}')
+    else:
+        lines.append('ripple_incidents_opened_total{tenant="storefront"} 0')
+
+    lines.append("# HELP ripple_incidents_resolved_total Total number of incidents resolved by Ripple.")
+    lines.append("# TYPE ripple_incidents_resolved_total counter")
+    if _RIPPLE_OPS_METRICS["incidents_resolved"]:
+        for t_id, cnt in sorted(_RIPPLE_OPS_METRICS["incidents_resolved"].items()):
+            lines.append(f'ripple_incidents_resolved_total{{tenant="{t_id}"}} {cnt}')
+    else:
+        lines.append('ripple_incidents_resolved_total{tenant="storefront"} 0')
+
+    lines.append("# HELP ripple_verification_outcomes_total Verification outcomes by outcome type.")
+    lines.append("# TYPE ripple_verification_outcomes_total counter")
+    for o_name, o_cnt in sorted(_RIPPLE_OPS_METRICS["verification_outcomes"].items()):
+        lines.append(f'ripple_verification_outcomes_total{{outcome="{o_name}"}} {o_cnt}')
+
+    lines.append("# HELP ripple_telemetry_degraded_total Total count of telemetry degradation events.")
+    lines.append("# TYPE ripple_telemetry_degraded_total counter")
+    lines.append(f'ripple_telemetry_degraded_total {_RIPPLE_OPS_METRICS["telemetry_degraded_total"]}')
+
+    lines.append("# HELP ripple_llm_degraded_total Total count of LLM provider degradation events.")
+    lines.append("# TYPE ripple_llm_degraded_total counter")
+    lines.append(f'ripple_llm_degraded_total {_RIPPLE_OPS_METRICS["llm_degraded_total"]}')
+
+    lines.append("# HELP ripple_events_processed_total Total SSE events processed by Ripple event bus.")
+    lines.append("# TYPE ripple_events_processed_total counter")
+    lines.append(f'ripple_events_processed_total {_RIPPLE_OPS_METRICS["events_processed_total"]}')
 
     return "\n".join(lines) + "\n"
 

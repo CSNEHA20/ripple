@@ -1,0 +1,9 @@
+{
+  "incident_id": "inc_8d138c56",
+  "observed_outcome": "resolved",
+  "metrics_summary": "Post-intervention check on recommendationservice: Service health normalized across 2 validation samples: error rate dropped to 0.0% (baseline: 0.0%, threshold: 2.0%), p95 latency stabilized at 16.0ms (baseline: 31.0ms, threshold: 200.0ms).",
+  "summary": "Verifier confirmed resolved outcome for rb_circuit_breaker [hyp_inc_8d138c56_recommendationservice].",
+  "resolution_confirmed": true,
+  "source": "replay",
+  "cached_at": 1792326946.1473591
+}

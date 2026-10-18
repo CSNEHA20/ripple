@@ -74,11 +74,13 @@ services:
     ports:
       - "9093:9093"
     environment:
-      - WEBHOOK_TOKEN=${WEBHOOK_TOKEN:-ripple_alertmanager_token_secret}
+      - WEBHOOK_TOKEN=${WEBHOOK_TOKEN:-}
     volumes:
-      - ./deploy/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
-    command:
-      - "--config.file=/etc/alertmanager/alertmanager.yml"
+      - ./deploy/alertmanager/alertmanager.yml.template:/etc/alertmanager/alertmanager.yml.template:ro
+    entrypoint:
+      - "/bin/sh"
+      - "-c"
+      - "sed \"s|\\$${WEBHOOK_TOKEN}|$${WEBHOOK_TOKEN}|g\" /etc/alertmanager/alertmanager.yml.template > /tmp/alertmanager.yml && exec /bin/alertmanager --config.file=/tmp/alertmanager.yml --storage.path=/alertmanager"
     depends_on:
       - backend
     restart: unless-stopped

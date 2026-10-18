@@ -138,7 +138,8 @@ class PrometheusAdapter(BaseTelemetryAdapter):
             return records
         except PrometheusConnectionError:
             if self.fallback_to_demo:
-                from app.adapters.demo_target import DemoTargetAdapter
+                from app.adapters.demo_target import DemoTargetAdapter, record_ops_telemetry_degraded
+                record_ops_telemetry_degraded()
                 return DemoTargetAdapter().fetch_metrics(services, window_minutes=window_minutes, ref_ts=ref_ts)
             raise
 

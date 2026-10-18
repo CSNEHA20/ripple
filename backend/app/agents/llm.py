@@ -558,6 +558,12 @@ def mark_llm_degraded(
         except Exception as bus_err:
             logger.debug(f"Could not publish llm_degraded event on event bus: {bus_err}")
 
+    try:
+        from app.adapters.demo_target import record_ops_llm_degraded
+        record_ops_llm_degraded()
+    except Exception:
+        pass
+
 
 class LLMWrapper:
     """LLM wrapper supporting 'live' and 'replay' modes, multi-provider dispatch,

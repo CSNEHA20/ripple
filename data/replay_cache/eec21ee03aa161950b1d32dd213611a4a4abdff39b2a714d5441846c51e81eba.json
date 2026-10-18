@@ -1,0 +1,14 @@
+{
+  "top_cause": "Internal defect or regression in alerting service 'paymentservice' (alerting_service, past_incident_affected, recent_deployment).",
+  "top_service": "paymentservice",
+  "evidence_score": 4.47,
+  "margin": 4.47,
+  "summary": "Investigator ranked root cause as 'paymentservice' with evidence score 4.47 and margin 4.47 [ev_hyp_inc_eafc10f8_paymentservice_dependency_path_support_1].",
+  "cited_evidence_ids": [
+    "ev_hyp_inc_eafc10f8_paymentservice_dependency_path_support_1",
+    "ev_hyp_inc_eafc10f8_paymentservice_upstream_suspect_support_2",
+    "ev_hyp_inc_eafc10f8_paymentservice_recent_deploy_support_3"
+  ],
+  "source": "replay",
+  "cached_at": 1792326924.8093538
+}

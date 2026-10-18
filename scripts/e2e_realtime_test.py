@@ -36,7 +36,7 @@ def run_e2e(
     base_url: str = "http://localhost:8000",
     tenant: str = "storefront",
     service: str = "paymentservice",
-    webhook_token: str = "ripple_alertmanager_token_secret",
+    webhook_token: str | None = None,
     admin_token: str = "key_admin_manager",
     use_testclient: bool = False,
     start_compose: bool = False,
@@ -49,13 +49,15 @@ def run_e2e(
     log(f"Target Service: {service}")
     log(f"Mode:           {'In-Process TestClient' if use_testclient else 'Live HTTP'}")
 
+    effective_webhook_token = webhook_token or os.environ.get("WEBHOOK_TOKEN") or "ripple_alertmanager_token_secret"
+    register_api_key(admin_token, tenant_id=tenant, role="admin", persist=True)
+
     client = None
     orig_webhook_token = settings.webhook_token
     if use_testclient:
         from fastapi.testclient import TestClient
         from app.main import app
-        settings.webhook_token = webhook_token
-        register_api_key(admin_token, tenant_id=tenant, role="admin")
+        settings.webhook_token = effective_webhook_token
         client = TestClient(app)
     else:
         # Check if live server is up, optionally starting Compose
@@ -82,12 +84,10 @@ def run_e2e(
             time.sleep(1.0)
 
         if not server_ready:
-            log("Warning: Live backend unreachable. Falling back to in-process TestClient.")
-            from fastapi.testclient import TestClient
-            from app.main import app
-            register_api_key(admin_token, tenant_id=tenant, role="admin")
-            client = TestClient(app)
-            use_testclient = True
+            log(f"FATAL: Live backend unreachable at {base_url} and --testclient was not specified.")
+            raise ConnectionError(
+                f"Live backend unreachable at {base_url}. Please ensure services are running, or use --testclient."
+            )
 
     headers = {
         "Authorization": f"Bearer {admin_token}",
@@ -142,7 +142,7 @@ def run_e2e(
     }
 
     alert_headers = {
-        "Authorization": f"Bearer {webhook_token}",
+        "Authorization": f"Bearer {effective_webhook_token}",
         "Content-Type": "application/json",
     }
     hook_resp = client.post("/api/webhooks/alert?sync=true", json=alert_payload, headers=alert_headers)
@@ -174,7 +174,7 @@ def run_e2e(
     inc_resp = client.get(f"/api/incidents/{incident_id}", headers=headers)
     assert inc_resp.status_code == 200
     inc_data = inc_resp.json().get("incident", {})
-    assert inc_data.get("status") in ("investigating", "triaging", "open", "mitigating", "action_required", "mitigated", "resolved"), (
+    assert inc_data.get("status") in ("investigating", "triaging", "open", "mitigating", "action_required", "awaiting_approval", "mitigated", "resolved"), (
         f"Unexpected incident status: {inc_data.get('status')}"
     )
     log(f"Incident {incident_id} status: {inc_data.get('status')}")
@@ -193,8 +193,14 @@ def run_e2e(
             history = event_bus._load_persisted_events(incident_id)
         events_received = history
     else:
-        # Live HTTP SSE stream
-        with client.stream("GET", f"/api/incidents/{incident_id}/stream?token={admin_token}") as stream:
+        # Live HTTP SSE stream: acquire short-lived stream token (Z4)
+        token_resp = client.post(f"/api/incidents/{incident_id}/stream-token", headers=headers)
+        stream_token = None
+        if token_resp.status_code == 200:
+            stream_token = token_resp.json().get("stream_token")
+            log(f"Acquired short-lived stream token: {stream_token}")
+        stream_url = f"/api/incidents/{incident_id}/stream" + (f"?stream_token={stream_token}" if stream_token else "")
+        with client.stream("GET", stream_url, headers=headers if not stream_token else {}) as stream:
             for line in stream.iter_lines():
                 if line.startswith("data:"):
                     raw = line[5:].strip()
@@ -284,6 +290,20 @@ def run_e2e(
     is_broken_now = state_after.get("states", {}).get(service, {}).get("broken", False)
     assert is_broken_now is False, "Service remains broken after remediation execution!"
     log("Target service health successfully restored to normal.")
+
+    # Prometheus Metrics Live Query Verification (Z1)
+    prom_url = os.environ.get("PROMETHEUS_URL", "http://localhost:9090")
+    try:
+        with httpx.Client(timeout=4.0) as prom_client:
+            p_res = prom_client.get(
+                f"{prom_url}/api/v1/query",
+                params={"query": f'http_requests_total{{service="{service}"}}'},
+            )
+            if p_res.status_code == 200 and p_res.json().get("status") == "success":
+                series = p_res.json().get("data", {}).get("result", [])
+                log(f"[Prometheus] Telemetry query verified: {len(series)} live metrics series confirmed for '{service}'.")
+    except Exception as pe:
+        log(f"[Prometheus] Query note: {pe}")
 
     # Final incident status check
     final_resp = client.get(f"/api/incidents/{incident_id}", headers=headers)

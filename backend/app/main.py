@@ -1,4 +1,5 @@
 import logging
+import os
 import uuid
 import json
 import secrets
@@ -105,6 +106,8 @@ from app.security import (
     register_api_key,
     revoke_api_key,
     list_api_keys,
+    create_stream_token,
+    verify_stream_token,
 )
 
 
@@ -115,6 +118,9 @@ def validate_security_configuration():
         if not settings.webhook_secret and not settings.webhook_token:
             logger.critical("FATAL: webhook_secret or webhook_token must be configured when ENVIRONMENT=production.")
             raise RuntimeError("FATAL: webhook_secret or webhook_token must be configured when ENVIRONMENT=production.")
+        if not getattr(settings, "settings_encryption_key", None):
+            logger.critical("FATAL: SETTINGS_ENCRYPTION_KEY must be configured when ENVIRONMENT=production.")
+            raise RuntimeError("FATAL: SETTINGS_ENCRYPTION_KEY must be configured when ENVIRONMENT=production.")
         check_default_keys_in_production()
 
 
@@ -769,11 +775,23 @@ def api_investigate_scenario(
         raise HTTPException(status_code=400, detail="Scenario missing alert.service")
 
     alert_text = alert.get("text", "")
+    alert_ts = alert.get("ts")
+    if alert_ts is None:
+        try:
+            q_res = graph.query(
+                "MATCH (a:Alert) WHERE a.scenario_id = $sc_id RETURN a.ts ORDER BY a.ts DESC LIMIT 1",
+                {"sc_id": scenario_id},
+            )
+            if q_res and q_res.result_set:
+                alert_ts = float(q_res.result_set[0][0])
+        except Exception:
+            pass
     try:
         result, trace = run_investigation(
             graph=graph,
             alerting_service=alert_svc,
             alert_text=alert_text,
+            as_of=alert_ts,
             incident_id=f"inc_{scenario_id}",
             persist=True,
         )
@@ -1332,24 +1350,18 @@ def api_get_incident(
     }
 
 
-@app.get("/incidents/{incident_id}/stream")
-@app.get("/api/incidents/{incident_id}/stream")
-async def api_stream_incident_events(
+@app.post("/incidents/{incident_id}/stream-token")
+@app.post("/api/incidents/{incident_id}/stream-token")
+def api_create_stream_token(
     incident_id: str,
-    tenant: str = Query(default="storefront", description="Tenant graph ID"),
-    last_event_id: str | None = Query(default=None, description="Last-Event-ID query fallback"),
-    last_event_id_header: str | None = Header(default=None, alias="Last-Event-ID"),
     auth: dict[str, Any] = Depends(authenticate_api_key),
 ):
-    """Server-Sent Events (SSE) stream of live agent timeline events.
-    Strictly authenticated via API key (X-API-Key, Authorization: Bearer, ?token=, or ?api_key=).
-    Checks that the incident belongs to caller's tenant; rejects cross-tenant streaming with 403 Forbidden.
-    Retains Last-Event-ID resume support.
+    """Issue a short-lived, incident-and-tenant-scoped token for SSE streaming (Z4).
+    Replaces passing long-lived API keys in URL query parameters.
     """
     caller_tenant = auth.get("tenant_id", "storefront")
     caller_role = auth.get("role", "viewer")
 
-    # Determine incident tenant
     incident_tenant = event_bus.get_incident_tenant(incident_id)
     if not incident_tenant:
         try:
@@ -1361,19 +1373,66 @@ async def api_stream_incident_events(
         except Exception:
             pass
 
+    if incident_tenant and incident_tenant != caller_tenant and caller_role != "admin":
+        raise HTTPException(
+            status_code=403,
+            detail=f"Forbidden: Tenant '{caller_tenant}' cannot access incident belonging to '{incident_tenant}'",
+        )
+
+    target_tenant = incident_tenant or caller_tenant
+    st_token = create_stream_token(
+        incident_id=incident_id,
+        tenant_id=target_tenant,
+        role=caller_role,
+        expires_in_seconds=300.0,
+    )
+    return {
+        "status": "success",
+        "stream_token": st_token,
+        "expires_in": 300,
+        "incident_id": incident_id,
+        "tenant_id": target_tenant,
+    }
+
+
+@app.get("/incidents/{incident_id}/stream")
+@app.get("/api/incidents/{incident_id}/stream")
+async def api_stream_incident_events(
+    incident_id: str,
+    stream_token: str | None = Query(default=None, description="Short-lived stream token"),
+    tenant: str = Query(default="storefront", description="Tenant graph ID"),
+    last_event_id: str | None = Query(default=None, description="Last-Event-ID query fallback"),
+    last_event_id_header: str | None = Header(default=None, alias="Last-Event-ID"),
+    auth: dict[str, Any] = Depends(authenticate_api_key),
+):
+    """Server-Sent Events (SSE) stream of live agent timeline events.
+    Strictly authenticated via short-lived stream token (?stream_token=) or Header (Authorization / X-API-Key).
+    Checks that the incident belongs to caller's tenant; rejects cross-tenant streaming with 403 Forbidden.
+    Retains Last-Event-ID resume support.
+    """
+    caller_tenant = auth.get("tenant_id", "storefront")
+    caller_role = auth.get("role", "viewer")
+
+    # If authenticated via stream token, verify it is scoped to this incident
+    if auth.get("is_stream_token"):
+        token_inc_id = auth.get("incident_id")
+        if token_inc_id and token_inc_id != incident_id:
+            raise HTTPException(
+                status_code=403,
+                detail=f"Forbidden: Stream token scoped to '{token_inc_id}' cannot stream incident '{incident_id}'",
+            )
+
+    # Determine incident tenant from persisted mapping or graph
+    incident_tenant = event_bus.get_incident_tenant(incident_id)
     if not incident_tenant:
-        for candidate in ["storefront", "payments"]:
-            if candidate == caller_tenant:
-                continue
-            try:
-                tg = TenantGraph(candidate)
-                res = tg.query("MATCH (i:Incident {id: $iid}) RETURN i.id", {"iid": incident_id})
-                if res and res.result_set:
-                    incident_tenant = candidate
-                    event_bus.set_incident_tenant(incident_id, candidate)
-                    break
-            except Exception:
-                pass
+        try:
+            cg = TenantGraph(caller_tenant)
+            res = cg.query("MATCH (i:Incident {id: $iid}) RETURN i.id", {"iid": incident_id})
+            if res and res.result_set:
+                incident_tenant = caller_tenant
+                event_bus.set_incident_tenant(incident_id, caller_tenant)
+        except Exception:
+            pass
 
     if incident_tenant and incident_tenant != caller_tenant and caller_role != "admin":
         logger.warning(
@@ -1422,6 +1481,12 @@ def api_approve_incident_action(
     """
     resolution = resolve_llm_mode(req.mode)
     mode = resolution.mode
+    if resolution.degraded:
+        mark_llm_degraded(
+            graph=graph,
+            incident_id=incident_id,
+            reason=f"LLM mode '{req.mode}' degraded to '{mode}': {resolution.degraded_reason}",
+        )
     effective_approver = req.approver if req.approver and req.approver != "operator" else (auth.get("name") or auth.get("tenant_id") + "_responder")
 
     if sync:
@@ -1589,6 +1654,11 @@ def api_ask_brain(
     """Company-Brain Q&A: Natural language questions answered from the graph with sources."""
     try:
         resolution = resolve_llm_mode(req.mode)
+        if resolution.degraded:
+            mark_llm_degraded(
+                graph=graph,
+                reason=f"LLM mode '{req.mode}' degraded to '{resolution.mode}': {resolution.degraded_reason}",
+            )
         result, trace = ask_brain(
             graph=graph,
             question=req.question,

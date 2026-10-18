@@ -56,13 +56,50 @@ jobs:
         run: |
           python scripts/run_load_test.py --tenants load_tenant_alpha,load_tenant_beta --incidents 15 --workers 8
 
-      - name: Run Real-Time End-to-End Test Suite
+      - name: Run Real-Time In-Process TestClient Suite
         env:
           FALKORDB_HOST: localhost
           FALKORDB_PORT: 6379
           ENVIRONMENT: test
         run: |
           python scripts/e2e_realtime_test.py --testclient
+
+  e2e-live:
+    name: Live Real-Time End-to-End Container Suite (Docker Compose)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install test dependencies
+        run: |
+          pip install httpx
+
+      - name: Start Docker Compose Stack
+        run: |
+          docker compose up -d
+          for i in $(seq 1 30); do
+            if curl -s http://localhost:8000/api/health | grep '"status":"ok"'; then
+              echo "Backend container is healthy and online."
+              break
+            fi
+            echo "Waiting for backend..."
+            sleep 2
+          done
+
+      - name: Run Live Real-Time End-to-End Test Suite
+        run: |
+          python scripts/e2e_realtime_test.py --url http://localhost:8000
+
+      - name: Tear Down Stack
+        if: always()
+        run: |
+          docker compose down -v
 
   frontend-build:
     name: Frontend Typecheck & Build (Node 20)

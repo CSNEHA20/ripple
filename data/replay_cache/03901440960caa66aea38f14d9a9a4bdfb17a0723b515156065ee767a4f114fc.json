@@ -1,0 +1,15 @@
+{
+  "selected_runbook_id": "rb_rollback",
+  "runbook_title": "Rollback Recent Deployment",
+  "is_applicable": true,
+  "status_update": "Investigating degraded performance on cartservice. Root cause identified as cartservice. Prepared mitigation plan 'Rollback Recent Deployment'.",
+  "paged_people": [
+    "grantr",
+    "mario-garcia",
+    "zoe-k"
+  ],
+  "proposed_remediation": "Propose Rollback Recent Deployment for cartservice [rb_rollback]",
+  "action_class": "needs_approval",
+  "source": "replay",
+  "cached_at": 1792326951.768923
+}

@@ -1,0 +1,9 @@
+{
+  "incident_id": "inc_f7022341",
+  "observed_outcome": "resolved",
+  "metrics_summary": "Post-intervention check on adservice: Service health normalized across 2 validation samples: error rate dropped to 0.0% (baseline: 28.0%, threshold: 33.6%), p95 latency stabilized at 21.0ms (baseline: 5200.0ms, threshold: 6240.0ms).",
+  "summary": "Verifier confirmed resolved outcome for rb_rollback [hyp_inc_f7022341_adservice].",
+  "resolution_confirmed": true,
+  "source": "replay",
+  "cached_at": 1792326935.889084
+}

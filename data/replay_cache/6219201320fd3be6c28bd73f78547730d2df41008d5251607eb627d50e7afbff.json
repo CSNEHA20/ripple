@@ -1,0 +1,14 @@
+{
+  "alerting_service": "emailservice (Citations: [inc_emailservice])",
+  "severity": "P1",
+  "blast_radius_count": 3,
+  "impacted_services": [
+    "checkoutservice",
+    "frontend",
+    "loadgenerator"
+  ],
+  "summary": "Triage assessed alert on 'emailservice'. Blast radius: 3 downstream service(s) [checkoutservice, frontend, loadgenerator]. Assigned severity P1.",
+  "suggested_focus": "Investigate upstream dependencies and recent changes affecting 'emailservice'.",
+  "source": "replay",
+  "cached_at": 1792326939.1161878
+}

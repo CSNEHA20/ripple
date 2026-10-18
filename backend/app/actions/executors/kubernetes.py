@@ -12,7 +12,41 @@ from app.tenant_settings import get_tenant_settings
 
 logger = logging.getLogger("ripple.actions.executors.kubernetes")
 
+K8S_IDEMPOTENCY_FILE = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+    "data",
+    "k8s_idempotency_keys.json",
+)
+
 _EXECUTED_K8S_KEYS: set[str] = set()
+
+
+def _load_persisted_k8s_keys() -> set[str]:
+    keys = set()
+    if os.path.exists(K8S_IDEMPOTENCY_FILE):
+        try:
+            with open(K8S_IDEMPOTENCY_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                if isinstance(data, list):
+                    keys.update(data)
+        except Exception:
+            pass
+    return keys
+
+
+def _save_persisted_k8s_key(key: str) -> None:
+    try:
+        os.makedirs(os.path.dirname(K8S_IDEMPOTENCY_FILE), exist_ok=True)
+        current = _load_persisted_k8s_keys()
+        current.add(key)
+        with open(K8S_IDEMPOTENCY_FILE, "w", encoding="utf-8") as f:
+            json.dump(sorted(list(current)), f)
+    except Exception as e:
+        logger.debug(f"Failed to persist k8s key: {e}")
+
+
+# Initialize in-memory cache from disk
+_EXECUTED_K8S_KEYS.update(_load_persisted_k8s_keys())
 
 
 class KubernetesRolloutExecutor(ActionExecutor):
@@ -35,8 +69,9 @@ class KubernetesRolloutExecutor(ActionExecutor):
         key = idempotency_key or f"k8s:{incident_id}:{action_id}:{action_kind}"
 
         # 1. Check in-memory idempotency cache
-        if key in _EXECUTED_K8S_KEYS:
-            logger.info(f"[KubernetesExecutor] Action {key} already executed in this session. Skipping.")
+        if key in _EXECUTED_K8S_KEYS or key in _load_persisted_k8s_keys():
+            _EXECUTED_K8S_KEYS.add(key)
+            logger.info(f"[KubernetesExecutor] Action {key} already executed in this or past session. Skipping.")
             return ExecutionReceipt(
                 idempotency_key=key,
                 action_id=action_id,
@@ -54,6 +89,7 @@ class KubernetesRolloutExecutor(ActionExecutor):
             persisted = self.check_persisted_idempotency(graph, key)
             if persisted:
                 _EXECUTED_K8S_KEYS.add(key)
+                _save_persisted_k8s_key(key)
                 return persisted
 
         # Resolve payload parameters
@@ -140,6 +176,7 @@ class KubernetesRolloutExecutor(ActionExecutor):
         )
 
         _EXECUTED_K8S_KEYS.add(key)
+        _save_persisted_k8s_key(key)
 
         receipt = ExecutionReceipt(
             idempotency_key=key,

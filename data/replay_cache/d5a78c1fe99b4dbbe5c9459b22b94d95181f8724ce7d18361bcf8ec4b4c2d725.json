@@ -1,0 +1,14 @@
+{
+  "selected_runbook_id": "rb_rollback",
+  "runbook_title": "Rollback Recent Deployment",
+  "is_applicable": true,
+  "status_update": "Investigating degraded performance on emailservice. Root cause identified as emailservice. Prepared mitigation plan 'Rollback Recent Deployment'.",
+  "paged_people": [
+    "david-c",
+    "lisa-w"
+  ],
+  "proposed_remediation": "Propose Rollback Recent Deployment for emailservice [rb_rollback]",
+  "action_class": "needs_approval",
+  "source": "replay",
+  "cached_at": 1792326938.5791461
+}

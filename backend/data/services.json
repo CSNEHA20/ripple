@@ -1,0 +1,202 @@
+{
+  "services": [
+    {
+      "name": "frontend",
+      "language": "Go",
+      "tier": "tier-1",
+      "description": "Exposes HTTP server serving the website and reverse-proxies gRPC calls to internal services.",
+      "deps_known": true
+    },
+    {
+      "name": "cartservice",
+      "language": "C#",
+      "tier": "tier-1",
+      "description": "Stores user shopping cart items in Redis datastore and provides cart modification APIs.",
+      "deps_known": true
+    },
+    {
+      "name": "productcatalogservice",
+      "language": "Go",
+      "tier": "tier-1",
+      "description": "Provides product search, details, and list APIs reading from catalog JSON.",
+      "deps_known": true
+    },
+    {
+      "name": "currencyservice",
+      "language": "Node.js",
+      "tier": "tier-2",
+      "description": "Converts currency amounts between different international currencies based on current exchange rates.",
+      "deps_known": true
+    },
+    {
+      "name": "paymentservice",
+      "language": "Node.js",
+      "tier": "tier-1",
+      "description": "Charges customer credit cards and processes payment authorization with mock merchant provider.",
+      "deps_known": true
+    },
+    {
+      "name": "shippingservice",
+      "language": "Go",
+      "tier": "tier-2",
+      "description": "Gives shipping quotes and ships orders based on mock address and items count.",
+      "deps_known": true
+    },
+    {
+      "name": "emailservice",
+      "language": "Python",
+      "tier": "tier-3",
+      "description": "Sends customer confirmation emails upon successful order placement.",
+      "deps_known": true
+    },
+    {
+      "name": "checkoutservice",
+      "language": "Go",
+      "tier": "tier-1",
+      "description": "Coordinates cart retrieval, payment processing, shipping quote, order preparation, and notification.",
+      "deps_known": true
+    },
+    {
+      "name": "recommendationservice",
+      "language": "Python",
+      "tier": "tier-2",
+      "description": "Recommends other products to browse based on current cart contents.",
+      "deps_known": true
+    },
+    {
+      "name": "adservice",
+      "language": "Java",
+      "tier": "tier-3",
+      "description": "Serves targeted contextual advertisements based on current browsing category.",
+      "deps_known": true
+    },
+    {
+      "name": "loadgenerator",
+      "language": "Python",
+      "tier": "tier-3",
+      "description": "Continuously generates synthetic realistic traffic against frontend web service.",
+      "deps_known": true
+    },
+    {
+      "name": "redis-cart",
+      "language": "C",
+      "tier": "tier-1",
+      "description": "In-memory key-value cache datastore storing persistent session carts for cartservice.",
+      "deps_known": true
+    }
+  ],
+  "dependencies": [
+    {
+      "caller": "frontend",
+      "callee": "checkoutservice",
+      "protocol": "gRPC",
+      "criticality": "high",
+      "verified": true
+    },
+    {
+      "caller": "frontend",
+      "callee": "recommendationservice",
+      "protocol": "gRPC",
+      "criticality": "medium",
+      "verified": true
+    },
+    {
+      "caller": "frontend",
+      "callee": "productcatalogservice",
+      "protocol": "gRPC",
+      "criticality": "high",
+      "verified": true
+    },
+    {
+      "caller": "frontend",
+      "callee": "cartservice",
+      "protocol": "gRPC",
+      "criticality": "high",
+      "verified": true
+    },
+    {
+      "caller": "frontend",
+      "callee": "shippingservice",
+      "protocol": "gRPC",
+      "criticality": "medium",
+      "verified": true
+    },
+    {
+      "caller": "frontend",
+      "callee": "currencyservice",
+      "protocol": "gRPC",
+      "criticality": "medium",
+      "verified": true
+    },
+    {
+      "caller": "frontend",
+      "callee": "adservice",
+      "protocol": "gRPC",
+      "criticality": "low",
+      "verified": true
+    },
+    {
+      "caller": "checkoutservice",
+      "callee": "productcatalogservice",
+      "protocol": "gRPC",
+      "criticality": "high",
+      "verified": true
+    },
+    {
+      "caller": "checkoutservice",
+      "callee": "shippingservice",
+      "protocol": "gRPC",
+      "criticality": "high",
+      "verified": true
+    },
+    {
+      "caller": "checkoutservice",
+      "callee": "paymentservice",
+      "protocol": "gRPC",
+      "criticality": "critical",
+      "verified": true
+    },
+    {
+      "caller": "checkoutservice",
+      "callee": "emailservice",
+      "protocol": "gRPC",
+      "criticality": "low",
+      "verified": true
+    },
+    {
+      "caller": "checkoutservice",
+      "callee": "currencyservice",
+      "protocol": "gRPC",
+      "criticality": "medium",
+      "verified": true
+    },
+    {
+      "caller": "checkoutservice",
+      "callee": "cartservice",
+      "protocol": "gRPC",
+      "criticality": "high",
+      "verified": true
+    },
+    {
+      "caller": "recommendationservice",
+      "callee": "productcatalogservice",
+      "protocol": "gRPC",
+      "criticality": "medium",
+      "verified": true
+    },
+    {
+      "caller": "cartservice",
+      "callee": "redis-cart",
+      "protocol": "redis",
+      "criticality": "critical",
+      "verified": true
+    },
+    {
+      "caller": "loadgenerator",
+      "callee": "frontend",
+      "protocol": "HTTP",
+      "criticality": "low",
+      "verified": true
+    }
+  ]
+}

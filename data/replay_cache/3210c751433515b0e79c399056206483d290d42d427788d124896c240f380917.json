@@ -1,0 +1,15 @@
+{
+  "selected_runbook_id": "rb_rollback",
+  "runbook_title": "Rollback Recent Deployment",
+  "is_applicable": true,
+  "status_update": "Investigating degraded performance on frontend. Root cause identified as frontend. Prepared mitigation plan 'Rollback Recent Deployment'.",
+  "paged_people": [
+    "cymbal-stewart",
+    "yuri-t",
+    "alex-m"
+  ],
+  "proposed_remediation": "Propose Rollback Recent Deployment for frontend [rb_rollback]",
+  "action_class": "needs_approval",
+  "source": "replay",
+  "cached_at": 1792326961.5850127
+}

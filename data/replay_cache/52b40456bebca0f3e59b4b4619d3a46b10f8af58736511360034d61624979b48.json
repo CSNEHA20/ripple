@@ -1,0 +1,9 @@
+{
+  "incident_id": "inc_0f4c5960",
+  "observed_outcome": "resolved",
+  "metrics_summary": "Post-intervention check on currencyservice: Service health normalized across 2 validation samples: error rate dropped to 0.0% (baseline: 16.0%, threshold: 19.2%), p95 latency stabilized at 30.0ms (baseline: 3100.0ms, threshold: 3720.0ms).",
+  "summary": "Verifier confirmed resolved outcome for rb_rollback [hyp_inc_0f4c5960_currencyservice].",
+  "resolution_confirmed": true,
+  "source": "replay",
+  "cached_at": 1792326928.1694276
+}

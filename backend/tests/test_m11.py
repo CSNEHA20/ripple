@@ -149,68 +149,72 @@ def test_m11_benchmark_api(client):
     assert "# Ripple Benchmark Evaluation Report" in rep_data["markdown_report"]
 
 
-@pytest.mark.asyncio
-async def test_mcp_server_tools_and_execution(seeded_tenant):
+def test_mcp_server_tools_and_execution(seeded_tenant):
     """Test MCP Server:
     1. Tool registry exposes all 12 tools (8 M4 tools + recall, rank_hypotheses, counterfactual_blast, ask).
     2. Simulated MCP client invokes tools and receives structured JSON responses.
     """
-    tools = await mcp_server.list_tools()
-    tool_names = [t.name for t in tools]
+    import anyio
 
-    expected_tools = [
-        "blast_radius",
-        "upstream_suspects",
-        "recent_changes",
-        "service_health",
-        "who_knows",
-        "similar_incidents",
-        "criticality_ranking",
-        "path_between",
-        "recall",
-        "rank_hypotheses",
-        "counterfactual_blast",
-        "ask",
-    ]
-    for exp in expected_tools:
-        assert exp in tool_names, f"Expected MCP tool '{exp}' not found in registered tools: {tool_names}"
+    async def _run():
+        tools = await mcp_server.list_tools()
+        tool_names = [t.name for t in tools]
 
-    # 1. Test blast_radius
-    res_blast = await mcp_server.call_tool(
-        "blast_radius",
-        {"service": "paymentservice", "tenant": seeded_tenant},
-    )
-    assert not res_blast.is_error
-    payload_blast = json.loads(res_blast.content[0].text)
-    blast_data = payload_blast.get("data", payload_blast)
-    assert "service" in blast_data
-    assert "affected_services" in blast_data
+        expected_tools = [
+            "blast_radius",
+            "upstream_suspects",
+            "recent_changes",
+            "service_health",
+            "who_knows",
+            "similar_incidents",
+            "criticality_ranking",
+            "path_between",
+            "recall",
+            "rank_hypotheses",
+            "counterfactual_blast",
+            "ask",
+        ]
+        for exp in expected_tools:
+            assert exp in tool_names, f"Expected MCP tool '{exp}' not found in registered tools: {tool_names}"
 
-    # 2. Test recall
-    res_recall = await mcp_server.call_tool(
-        "recall",
-        {"alert_text": "Payment authorization timeout", "tenant": seeded_tenant},
-    )
-    assert not res_recall.is_error
-    payload_recall = json.loads(res_recall.content[0].text)
-    assert "data" in payload_recall
-    assert "similar_incidents" in payload_recall["data"]
+        # 1. Test blast_radius
+        res_blast = await mcp_server.call_tool(
+            "blast_radius",
+            {"service": "paymentservice", "tenant": seeded_tenant},
+        )
+        assert not res_blast.is_error
+        payload_blast = json.loads(res_blast.content[0].text)
+        blast_data = payload_blast.get("data", payload_blast)
+        assert "service" in blast_data
+        assert "affected_services" in blast_data
 
-    # 3. Test rank_hypotheses
-    res_hyp = await mcp_server.call_tool(
-        "rank_hypotheses",
-        {"alerting_service": "paymentservice", "alert_text": "Payment error", "tenant": seeded_tenant},
-    )
-    assert not res_hyp.is_error
-    payload_hyp = json.loads(res_hyp.content[0].text)
-    assert "hypotheses" in payload_hyp["data"]
+        # 2. Test recall
+        res_recall = await mcp_server.call_tool(
+            "recall",
+            {"alert_text": "Payment authorization timeout", "tenant": seeded_tenant},
+        )
+        assert not res_recall.is_error
+        payload_recall = json.loads(res_recall.content[0].text)
+        assert "data" in payload_recall
+        assert "similar_incidents" in payload_recall["data"]
 
-    # 4. Test ask (Company-brain Q&A)
-    res_ask = await mcp_server.call_tool(
-        "ask",
-        {"question": "Who knows the payment service?", "tenant": seeded_tenant},
-    )
-    assert not res_ask.is_error
-    payload_ask = json.loads(res_ask.content[0].text)
-    assert "answer" in payload_ask["data"]
-    assert "sources" in payload_ask["data"]
+        # 3. Test rank_hypotheses
+        res_hyp = await mcp_server.call_tool(
+            "rank_hypotheses",
+            {"alerting_service": "paymentservice", "alert_text": "Payment error", "tenant": seeded_tenant},
+        )
+        assert not res_hyp.is_error
+        payload_hyp = json.loads(res_hyp.content[0].text)
+        assert "hypotheses" in payload_hyp["data"]
+
+        # 4. Test ask (Company-brain Q&A)
+        res_ask = await mcp_server.call_tool(
+            "ask",
+            {"question": "Who knows the payment service?", "tenant": seeded_tenant},
+        )
+        assert not res_ask.is_error
+        payload_ask = json.loads(res_ask.content[0].text)
+        assert "answer" in payload_ask["data"]
+        assert "sources" in payload_ask["data"]
+
+    anyio.run(_run)

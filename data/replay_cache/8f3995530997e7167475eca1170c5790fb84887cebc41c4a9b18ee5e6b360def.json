@@ -1,0 +1,9 @@
+{
+  "incident_id": "inc_c959a6aa",
+  "observed_outcome": "resolved",
+  "metrics_summary": "Post-intervention check on productcatalogservice: Service health normalized across 2 validation samples: error rate dropped to 0.0% (baseline: 14.0%, threshold: 16.8%), p95 latency stabilized at 27.0ms (baseline: 1500.0ms, threshold: 1800.0ms).",
+  "summary": "Verifier confirmed resolved outcome for rb_rollback [hyp_inc_c959a6aa_productcatalogservice].",
+  "resolution_confirmed": true,
+  "source": "replay",
+  "cached_at": 1792326930.9837918
+}

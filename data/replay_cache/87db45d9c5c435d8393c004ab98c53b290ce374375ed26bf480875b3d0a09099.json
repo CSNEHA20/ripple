@@ -1,0 +1,9 @@
+{
+  "incident_id": "inc_706e6b65",
+  "observed_outcome": "resolved",
+  "metrics_summary": "Post-intervention check on productcatalogservice: Service health normalized across 2 validation samples: error rate dropped to 0.0% (baseline: 14.0%, threshold: 16.8%), p95 latency stabilized at 15.0ms (baseline: 1500.0ms, threshold: 1800.0ms).",
+  "summary": "Verifier confirmed resolved outcome for rb_circuit_breaker [hyp_inc_706e6b65_productcatalogservice].",
+  "resolution_confirmed": true,
+  "source": "replay",
+  "cached_at": 1792326929.7348123
+}

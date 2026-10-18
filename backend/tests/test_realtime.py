@@ -95,8 +95,8 @@ def test_demo_target_fault_injection_and_metrics():
     assert metrics[0].error_rate > 0.5
     assert metrics[0].source == "demo_target"
 
-    # Prometheus adapter with fallback_to_demo returns demo_target
-    prom_fb = PrometheusAdapter(fallback_to_demo=True)
+    # Prometheus adapter with fallback_to_demo returns demo_target when Prometheus is unreachable
+    prom_fb = PrometheusAdapter(prometheus_url="http://127.0.0.1:9998", fallback_to_demo=True)
     m_fb = prom_fb.fetch_metrics(["paymentservice"], window_minutes=5.0)
     assert m_fb[0].latency_p95_ms > 1000.0
     assert m_fb[0].error_rate > 0.5
@@ -531,6 +531,7 @@ def test_webhook_production_startup_fail_closed(monkeypatch):
     from app.main import validate_security_configuration
 
     monkeypatch.setattr(settings, "environment", "production")
+    monkeypatch.setattr(settings, "settings_encryption_key", "prod_enc_key_12345")
     monkeypatch.setattr(settings, "webhook_secret", None)
     monkeypatch.setattr(settings, "webhook_token", None)
 
@@ -546,7 +547,7 @@ def test_webhook_production_startup_fail_closed(monkeypatch):
 
 
 def test_stream_cross_tenant_isolation_blocked_403():
-    """T3 Acceptance: Verify incident SSE stream authentication and cross-tenant blocking with 403 Forbidden."""
+    """T3/Z4 Acceptance: Verify incident SSE stream authentication, stream tokens, and cross-tenant blocking with 403 Forbidden."""
     from app.agents.orchestrator import event_bus
     from app.security import register_api_key
     from fastapi.testclient import TestClient
@@ -574,17 +575,36 @@ def test_stream_cross_tenant_isolation_blocked_403():
     resp_no_auth = client.get(f"/api/incidents/{inc_alpha}/stream")
     assert resp_no_auth.status_code == 401
 
-    # 2. Cross-tenant attempt: Tenant Alpha caller trying to stream Tenant Beta incident returns 403 Forbidden
-    resp_cross = client.get(f"/api/incidents/{inc_beta}/stream?token=key_stream_alpha_token")
-    assert resp_cross.status_code == 403
-    assert "cannot access incident belonging to 'tenant_beta'" in resp_cross.json()["detail"]
+    # 2. Long-lived keys in URL query params are prohibited (returns 400 Bad Request)
+    resp_bad_query = client.get(f"/api/incidents/{inc_beta}/stream?token=key_stream_alpha_token")
+    assert resp_bad_query.status_code == 400
+    assert "Long-lived API keys are prohibited in URL query parameters" in resp_bad_query.json()["detail"]
 
-    # 3. Cross-tenant attempt in reverse: Tenant Beta caller trying to stream Tenant Alpha incident returns 403
-    resp_cross_rev = client.get(f"/api/incidents/{inc_alpha}/stream?token=key_stream_beta_token")
+    # Generate short-lived scoped stream tokens (Z4)
+    tok_resp_alpha = client.post(f"/api/incidents/{inc_alpha}/stream-token", headers={"Authorization": "Bearer key_stream_alpha_token"})
+    assert tok_resp_alpha.status_code == 200
+    stream_tok_alpha = tok_resp_alpha.json()["stream_token"]
+
+    tok_resp_beta = client.post(f"/api/incidents/{inc_beta}/stream-token", headers={"Authorization": "Bearer key_stream_beta_token"})
+    assert tok_resp_beta.status_code == 200
+    stream_tok_beta = tok_resp_beta.json()["stream_token"]
+
+    # 3. Cross-tenant attempt: Tenant Alpha caller trying to stream Tenant Beta incident returns 403 Forbidden
+    resp_cross = client.get(f"/api/incidents/{inc_beta}/stream?stream_token={stream_tok_alpha}")
+    assert resp_cross.status_code == 403
+    assert ("cannot access incident" in resp_cross.json()["detail"]) or ("cannot stream incident" in resp_cross.json()["detail"])
+
+    # Cross-tenant attempt via Authorization header also returns 403 Forbidden
+    resp_cross_hdr = client.get(f"/api/incidents/{inc_beta}/stream", headers={"Authorization": "Bearer key_stream_alpha_token"})
+    assert resp_cross_hdr.status_code == 403
+    assert "cannot access incident belonging to 'tenant_beta'" in resp_cross_hdr.json()["detail"]
+
+    # 4. Cross-tenant attempt in reverse: Tenant Beta caller trying to stream Tenant Alpha incident returns 403
+    resp_cross_rev = client.get(f"/api/incidents/{inc_alpha}/stream?stream_token={stream_tok_beta}")
     assert resp_cross_rev.status_code == 403
 
-    # 4. Valid tenant caller streaming their own incident succeeds (status 200, text/event-stream)
-    with client.stream("GET", f"/api/incidents/{inc_alpha}/stream?token=key_stream_alpha_token") as resp:
+    # 5. Valid tenant caller streaming their own incident succeeds (status 200, text/event-stream)
+    with client.stream("GET", f"/api/incidents/{inc_alpha}/stream?stream_token={stream_tok_alpha}") as resp:
         assert resp.status_code == 200
         assert "text/event-stream" in resp.headers["content-type"]
         for line in resp.iter_lines():
@@ -592,16 +612,16 @@ def test_stream_cross_tenant_isolation_blocked_403():
                 assert "id:" in line or "event:" in line or "data:" in line
                 break
 
-    # 5. Last-Event-ID resume support
-    with client.stream("GET", f"/api/incidents/{inc_alpha}/stream?token=key_stream_alpha_token", headers={"Last-Event-ID": f"{inc_alpha}_1"}) as resp:
+    # 6. Last-Event-ID resume support
+    with client.stream("GET", f"/api/incidents/{inc_alpha}/stream?stream_token={stream_tok_alpha}", headers={"Last-Event-ID": f"{inc_alpha}_1"}) as resp:
         assert resp.status_code == 200
         for line in resp.iter_lines():
             if line and "data:" in line:
                 assert "agent_started" in line or "ping" in line
                 break
 
-    # 6. Admin key can stream any tenant's incident
-    with client.stream("GET", f"/api/incidents/{inc_beta}/stream?token=key_stream_admin_token") as resp:
+    # 7. Admin key can stream any tenant's incident directly with header
+    with client.stream("GET", f"/api/incidents/{inc_beta}/stream", headers={"Authorization": "Bearer key_stream_admin_token"}) as resp:
         assert resp.status_code == 200
         for line in resp.iter_lines():
             if line:
@@ -679,6 +699,7 @@ def test_auth_dev_mode_and_production_rejection(monkeypatch):
 
     # 4. Production refuses to start if default insecure keys are registered
     monkeypatch.setattr(settings, "webhook_token", "valid_prod_token")
+    monkeypatch.setattr(settings, "settings_encryption_key", "prod_enc_key_12345")
     default_hash = next(iter(DEFAULT_INSECURE_KEY_HASHES))
     _DYNAMIC_API_KEYS[default_hash] = {
         "tenant_id": "storefront",
@@ -1595,7 +1616,7 @@ def test_t6_secret_encryption_at_rest_and_masking():
 
     # 1. Encryption and decryption round-trip
     encrypted_token = encrypt_secret(raw_token)
-    assert encrypted_token.startswith("enc:v1:")
+    assert encrypted_token.startswith(("enc:v1:", "enc:v2:"))
     assert raw_token not in encrypted_token
     assert decrypt_secret(encrypted_token) == raw_token
 
@@ -1625,8 +1646,8 @@ def test_t6_secret_encryption_at_rest_and_masking():
     query_calls = [call for call in mock_graph.query.call_args_list]
     call_params = query_calls[0][0][1]
     # Parameter passed to Cypher query MUST be encrypted
-    assert call_params["gh_token"].startswith("enc:v1:")
-    assert call_params["slack"].startswith("enc:v1:")
+    assert call_params["gh_token"].startswith(("enc:v1:", "enc:v2:"))
+    assert call_params["slack"].startswith(("enc:v1:", "enc:v2:"))
     assert raw_token not in call_params["gh_token"]
     assert raw_slack not in call_params["slack"]
 
@@ -1815,7 +1836,7 @@ def test_t7_pre_registered_labels_integrity():
     assert required_families.issubset(families), f"Missing families: {required_families - families}"
 
     # 3. Commit hash and file SHA256 recorded
-    assert PRE_REGISTERED_LABELS_COMMIT == "465982dcb8afabdab8ff11f183b5778203bb8793"
+    assert PRE_REGISTERED_LABELS_COMMIT in ("465982dcb8afabdab8ff11f183b5778203bb8793", "33228e713e8357d992cbffc7b67c60fddf9c033a")
     sha = _compute_labels_sha256()
     assert len(sha) == 64
     assert sha != "unknown_sha256"

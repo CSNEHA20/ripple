@@ -1,0 +1,15 @@
+{
+  "alerting_service": "productcatalogservice (Citations: [inc_productcatalogservice], [inc_inc_hist_01])",
+  "severity": "P1",
+  "blast_radius_count": 4,
+  "impacted_services": [
+    "checkoutservice",
+    "frontend",
+    "recommendationservice",
+    "loadgenerator"
+  ],
+  "summary": "Triage assessed alert on 'productcatalogservice'. Blast radius: 4 downstream service(s) [checkoutservice, frontend, recommendationservice]. Assigned severity P1 (recalled inc_inc_hist_01).",
+  "suggested_focus": "Investigate upstream dependencies and recent changes affecting 'productcatalogservice'.",
+  "source": "replay",
+  "cached_at": 1792326930.3066425
+}

@@ -26,7 +26,7 @@ def seeded_tenant():
 def clean_scenario_nodes(graph: TenantGraph) -> None:
     """Clear transient scenario nodes between test runs to ensure isolation."""
     graph.query(
-        "MATCH (n) WHERE n:MetricSnapshot OR n:Deployment OR n:ArchitectureChange OR n:Alert OR n:Hypothesis OR n:Evidence OR n:Task "
+        "MATCH (n) WHERE n:MetricSnapshot OR n:ArchitectureChange OR n:Alert OR n:Hypothesis OR n:Evidence OR n:Task OR (n:Deployment AND (n.source = 'seeded' OR n.id STARTS WITH 'dep_sc_')) "
         "DETACH DELETE n"
     )
 
@@ -116,6 +116,7 @@ def test_evidence_gathering_support_and_contradiction(seeded_tenant):
                 "architecture_change",
                 "decision",
                 "doc",
+                "upstream_suspect",
             )
             assert 0.0 <= ev["freshness"] <= 1.0
             assert ev["weight"] > 0
@@ -321,8 +322,7 @@ def test_across_multiple_seeded_scenarios(seeded_tenant):
             incident_id=f"inc_multi_{sc_id}",
             persist=True,
         )
-
-        assert res["is_sufficient"] == expected_sufficiency
+        assert res["is_sufficient"] == expected_sufficiency, f"Failed on {sc_id}: got {res['is_sufficient']}, expected {expected_sufficiency}"
         assert len(res["hypotheses"]) > 0
 
         # Verify evidence was gathered for hypotheses

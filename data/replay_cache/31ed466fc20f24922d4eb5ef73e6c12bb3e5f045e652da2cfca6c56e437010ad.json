@@ -1,0 +1,9 @@
+{
+  "incident_id": "inc_02e6db2a",
+  "observed_outcome": "resolved",
+  "metrics_summary": "Post-intervention check on checkoutservice: Service health normalized across 2 validation samples: error rate dropped to 0.0% (baseline: 20.0%, threshold: 24.0%), p95 latency stabilized at 28.0ms (baseline: 2500.0ms, threshold: 3000.0ms).",
+  "summary": "Verifier confirmed resolved outcome for rb_rollback [hyp_inc_02e6db2a_checkoutservice].",
+  "resolution_confirmed": true,
+  "source": "replay",
+  "cached_at": 1792326946.2027037
+}
