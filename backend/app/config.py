@@ -75,6 +75,8 @@ class Settings(BaseSettings):
     prometheus_url: str = "http://localhost:9090"
     telemetry_source: str = "simulator"
     api_key_header: str = "X-API-Key"
+    auth_dev_mode: bool = False
+    api_keys_seed_file: str = "data/api_keys_seed.json"
 
     model_config = SettingsConfigDict(
         env_file=".env",

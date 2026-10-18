@@ -1,9 +1,11 @@
 import logging
 import uuid
 import json
+import secrets
 import time
 from contextlib import asynccontextmanager
 from typing import Annotated, Any
+from pydantic import BaseModel
 from fastapi import FastAPI, Header, HTTPException, Query, Depends, Request, BackgroundTasks
 from fastapi.responses import StreamingResponse, PlainTextResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -87,16 +89,26 @@ class TenantMiddleware(BaseHTTPMiddleware):
 app.add_middleware(TenantMiddleware)
 
 
-from app.security import authenticate_api_key, require_role, check_alert_dedupe, verify_webhook_signature
+from app.security import (
+    authenticate_api_key,
+    require_role,
+    check_alert_dedupe,
+    verify_webhook_signature,
+    check_default_keys_in_production,
+    register_api_key,
+    revoke_api_key,
+    list_api_keys,
+)
 
 
 @app.on_event("startup")
 def validate_security_configuration():
-    """Fail closed in production if security configurations are missing."""
+    """Fail closed in production if security configurations are missing or insecure default keys are registered."""
     if settings.environment == "production":
         if not settings.webhook_secret and not settings.webhook_token:
             logger.critical("FATAL: webhook_secret or webhook_token must be configured when ENVIRONMENT=production.")
             raise RuntimeError("FATAL: webhook_secret or webhook_token must be configured when ENVIRONMENT=production.")
+        check_default_keys_in_production()
 
 
 def get_webhook_tenant(
@@ -217,6 +229,78 @@ def ingest_tenant(
 ):
     """Trigger full data ingestion for the specified tenant. Requires 'admin' role."""
     return bootstrap_tenant(tenant_id, auth=auth)
+
+
+class CreateKeyRequest(BaseModel):
+    tenant_id: str
+    role: str = "responder"
+    name: str = ""
+    raw_key: str | None = None
+
+
+class RevokeKeyRequest(BaseModel):
+    key_hash: str | None = None
+    raw_key: str | None = None
+
+
+@app.get("/keys")
+@app.get("/api/keys")
+def get_api_keys(
+    tenant: str | None = Query(default=None),
+    auth: dict[str, Any] = Depends(require_role("admin")),
+):
+    """List registered API keys (hashed records). Requires 'admin' role."""
+    effective_tenant = tenant if auth["role"] == "admin" else auth["tenant_id"]
+    return {"keys": list_api_keys(tenant_id=effective_tenant)}
+
+
+@app.post("/keys", status_code=201)
+@app.post("/api/keys", status_code=201)
+def create_api_key(
+    req: CreateKeyRequest,
+    auth: dict[str, Any] = Depends(require_role("admin")),
+):
+    """Create and register a new API key. Raw key is returned once upon creation. Requires 'admin' role."""
+    raw_key = req.raw_key or f"key_{req.tenant_id}_{req.role}_{secrets.token_urlsafe(16)}"
+    rec = register_api_key(
+        raw_key=raw_key,
+        tenant_id=req.tenant_id,
+        role=req.role,
+        name=req.name,
+        persist=True,
+    )
+    return {
+        "status": "created",
+        "raw_key": raw_key,
+        "key_record": rec,
+    }
+
+
+@app.delete("/keys/{key_hash}")
+@app.delete("/api/keys/{key_hash}")
+def delete_key(
+    key_hash: str,
+    auth: dict[str, Any] = Depends(require_role("admin")),
+):
+    """Revoke an API key by hash. Requires 'admin' role."""
+    ok = revoke_api_key(key_hash=key_hash)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Key hash not found")
+    return {"status": "revoked", "key_hash": key_hash}
+
+
+@app.post("/keys/revoke")
+@app.post("/api/keys/revoke")
+def revoke_key_endpoint(
+    req: RevokeKeyRequest,
+    auth: dict[str, Any] = Depends(require_role("admin")),
+):
+    """Revoke an API key by raw_key or key_hash. Requires 'admin' role."""
+    ok = revoke_api_key(key_hash=req.key_hash, raw_key=req.raw_key)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Key not found")
+    return {"status": "revoked"}
+
 
 
 @app.post("/tenants/{tenant_id}/reembed")
@@ -1186,8 +1270,52 @@ async def api_stream_incident_events(
     tenant: str = Query(default="storefront", description="Tenant graph ID"),
     last_event_id: str | None = Query(default=None, description="Last-Event-ID query fallback"),
     last_event_id_header: str | None = Header(default=None, alias="Last-Event-ID"),
+    auth: dict[str, Any] = Depends(authenticate_api_key),
 ):
-    """Server-Sent Events (SSE) stream of live agent timeline events."""
+    """Server-Sent Events (SSE) stream of live agent timeline events.
+    Strictly authenticated via API key (X-API-Key, Authorization: Bearer, ?token=, or ?api_key=).
+    Checks that the incident belongs to caller's tenant; rejects cross-tenant streaming with 403 Forbidden.
+    Retains Last-Event-ID resume support.
+    """
+    caller_tenant = auth.get("tenant_id", "storefront")
+    caller_role = auth.get("role", "viewer")
+
+    # Determine incident tenant
+    incident_tenant = event_bus.get_incident_tenant(incident_id)
+    if not incident_tenant:
+        try:
+            cg = TenantGraph(caller_tenant)
+            res = cg.query("MATCH (i:Incident {id: $iid}) RETURN i.id", {"iid": incident_id})
+            if res and res.result_set:
+                incident_tenant = caller_tenant
+                event_bus.set_incident_tenant(incident_id, caller_tenant)
+        except Exception:
+            pass
+
+    if not incident_tenant:
+        for candidate in ["storefront", "payments"]:
+            if candidate == caller_tenant:
+                continue
+            try:
+                tg = TenantGraph(candidate)
+                res = tg.query("MATCH (i:Incident {id: $iid}) RETURN i.id", {"iid": incident_id})
+                if res and res.result_set:
+                    incident_tenant = candidate
+                    event_bus.set_incident_tenant(incident_id, candidate)
+                    break
+            except Exception:
+                pass
+
+    if incident_tenant and incident_tenant != caller_tenant and caller_role != "admin":
+        logger.warning(
+            f"Forbidden cross-tenant stream subscription: caller tenant '{caller_tenant}' "
+            f"attempted to stream incident '{incident_id}' belonging to '{incident_tenant}'"
+        )
+        raise HTTPException(
+            status_code=403,
+            detail=f"Forbidden: Tenant '{caller_tenant}' cannot access incident belonging to '{incident_tenant}'",
+        )
+
     effective_last_id = last_event_id_header or last_event_id
 
     async def sse_generator():
@@ -1203,7 +1331,7 @@ async def api_stream_incident_events(
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
             "X-Accel-Buffering": "no",
-            "X-Tenant": tenant,
+            "X-Tenant": incident_tenant or caller_tenant,
         },
     )
 

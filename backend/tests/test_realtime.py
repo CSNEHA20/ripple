@@ -261,8 +261,13 @@ def test_integration_settings_and_system_status():
     assert "telemetry_source" in st_data
     assert "llm_status" in st_data
 
-    # 2. Integration settings
-    settings_resp = client.get("/api/integrations/settings?tenant=storefront")
+    # 2. Integration settings (requires authentication)
+    from app.security import register_api_key
+    register_api_key("key_integration_test_secret", tenant_id="storefront", role="responder")
+    settings_resp = client.get(
+        "/api/integrations/settings?tenant=storefront",
+        headers={"Authorization": "Bearer key_integration_test_secret"},
+    )
     assert settings_resp.status_code == 200
     s_data = settings_resp.json()
     assert s_data["tenant_id"] == "storefront"
@@ -534,9 +539,207 @@ def test_webhook_production_startup_fail_closed(monkeypatch):
         validate_security_configuration()
     assert "webhook_secret or webhook_token must be configured" in str(exc_info.value)
 
-    # Allowed with token configured
+    # Allowed with token configured and non-default API keys
     monkeypatch.setattr(settings, "webhook_token", "prod_token_abc")
+    monkeypatch.setattr("app.security._DYNAMIC_API_KEYS", {})
     validate_security_configuration()  # Should not raise
+
+
+def test_stream_cross_tenant_isolation_blocked_403():
+    """T3 Acceptance: Verify incident SSE stream authentication and cross-tenant blocking with 403 Forbidden."""
+    from app.agents.orchestrator import event_bus
+    from app.security import register_api_key
+    from fastapi.testclient import TestClient
+    from app.main import app
+
+    register_api_key("key_stream_alpha_token", tenant_id="tenant_alpha", role="responder")
+    register_api_key("key_stream_beta_token", tenant_id="tenant_beta", role="responder")
+    register_api_key("key_stream_admin_token", tenant_id="tenant_alpha", role="admin")
+
+    inc_alpha = "inc_alpha_stream_01"
+    event_bus.set_incident_tenant(inc_alpha, "tenant_alpha")
+    event_bus.publish(inc_alpha, "incident_opened", {"incident_id": inc_alpha, "tenant_id": "tenant_alpha"})
+    event_bus.publish(inc_alpha, "agent_started", {"agent": "Triage"})
+    event_bus.publish(inc_alpha, "incident_closed", {"incident_id": inc_alpha})
+
+    inc_beta = "inc_beta_stream_02"
+    event_bus.set_incident_tenant(inc_beta, "tenant_beta")
+    event_bus.publish(inc_beta, "incident_opened", {"incident_id": inc_beta, "tenant_id": "tenant_beta"})
+    event_bus.publish(inc_beta, "agent_started", {"agent": "Triage"})
+    event_bus.publish(inc_beta, "incident_closed", {"incident_id": inc_beta})
+
+    client = TestClient(app)
+
+    # 1. Unauthenticated stream request returns 401
+    resp_no_auth = client.get(f"/api/incidents/{inc_alpha}/stream")
+    assert resp_no_auth.status_code == 401
+
+    # 2. Cross-tenant attempt: Tenant Alpha caller trying to stream Tenant Beta incident returns 403 Forbidden
+    resp_cross = client.get(f"/api/incidents/{inc_beta}/stream?token=key_stream_alpha_token")
+    assert resp_cross.status_code == 403
+    assert "cannot access incident belonging to 'tenant_beta'" in resp_cross.json()["detail"]
+
+    # 3. Cross-tenant attempt in reverse: Tenant Beta caller trying to stream Tenant Alpha incident returns 403
+    resp_cross_rev = client.get(f"/api/incidents/{inc_alpha}/stream?token=key_stream_beta_token")
+    assert resp_cross_rev.status_code == 403
+
+    # 4. Valid tenant caller streaming their own incident succeeds (status 200, text/event-stream)
+    with client.stream("GET", f"/api/incidents/{inc_alpha}/stream?token=key_stream_alpha_token") as resp:
+        assert resp.status_code == 200
+        assert "text/event-stream" in resp.headers["content-type"]
+        for line in resp.iter_lines():
+            if line:
+                assert "id:" in line or "event:" in line or "data:" in line
+                break
+
+    # 5. Last-Event-ID resume support
+    with client.stream("GET", f"/api/incidents/{inc_alpha}/stream?token=key_stream_alpha_token", headers={"Last-Event-ID": f"{inc_alpha}_1"}) as resp:
+        assert resp.status_code == 200
+        for line in resp.iter_lines():
+            if line and "data:" in line:
+                assert "agent_started" in line or "ping" in line
+                break
+
+    # 6. Admin key can stream any tenant's incident
+    with client.stream("GET", f"/api/incidents/{inc_beta}/stream?token=key_stream_admin_token") as resp:
+        assert resp.status_code == 200
+        for line in resp.iter_lines():
+            if line:
+                break
+
+
+def test_api_key_persistence_and_revocation():
+    """T3 Acceptance: Verify registered keys survive restarts and revocation takes immediate effect."""
+    import hashlib
+    from app.security import (
+        register_api_key,
+        lookup_api_key,
+        revoke_api_key,
+        _load_keys_store,
+    )
+    from fastapi import HTTPException
+
+    test_raw = "key_restart_survivor_secret"
+    register_api_key(test_raw, tenant_id="storefront", role="responder", name="Survivor Key")
+
+    # 1. Lookup in memory succeeds
+    rec = lookup_api_key(test_raw)
+    assert rec is not None
+    assert rec["name"] == "Survivor Key"
+
+    # 2. Reload store from disk (simulating server restart)
+    reloaded_store = _load_keys_store()
+    h = hashlib.sha256(test_raw.encode("utf-8")).hexdigest()
+    assert h in reloaded_store
+    assert reloaded_store[h]["name"] == "Survivor Key"
+
+    # 3. Revoke key
+    revoked = revoke_api_key(raw_key=test_raw)
+    assert revoked is True
+
+    # 4. Lookup after revocation raises 401
+    with pytest.raises(HTTPException) as exc_revoked:
+        lookup_api_key(test_raw)
+    assert exc_revoked.value.status_code == 401
+    assert "revoked" in exc_revoked.value.detail.lower()
+
+    # 5. Disk reload confirms key remains revoked across restart
+    reloaded_store_after = _load_keys_store()
+    assert reloaded_store_after[h]["revoked"] is True
+
+
+def test_auth_dev_mode_and_production_rejection(monkeypatch):
+    """T3 Acceptance: AUTH_DEV_MODE=false blocks requests without key; production strictly refuses default keys."""
+    from app.security import authenticate_api_key, check_default_keys_in_production, _DYNAMIC_API_KEYS, DEFAULT_INSECURE_KEY_HASHES
+    from starlette.requests import Request
+    from app.main import validate_security_configuration
+    from fastapi import HTTPException
+
+    dummy_req = Request({"type": "http", "headers": [], "query_string": b""})
+
+    # 1. When auth_dev_mode is False (default) and non-production: no key -> 401 Unauthorized
+    monkeypatch.setattr(settings, "auth_dev_mode", False)
+    monkeypatch.setattr(settings, "environment", "development")
+    with pytest.raises(HTTPException) as exc1:
+        authenticate_api_key(dummy_req)
+    assert exc1.value.status_code == 401
+    assert "auth_dev_mode is disabled" in exc1.value.detail
+
+    # 2. When auth_dev_mode is True and non-production: no key -> dev fallback
+    monkeypatch.setattr(settings, "auth_dev_mode", True)
+    auth2 = authenticate_api_key(dummy_req)
+    assert auth2["role"] == "admin"
+    assert auth2["authenticated"] is False
+
+    # 3. When environment is production: even with auth_dev_mode=True, missing key returns 401
+    monkeypatch.setattr(settings, "environment", "production")
+    with pytest.raises(HTTPException) as exc3:
+        authenticate_api_key(dummy_req)
+    assert exc3.value.status_code == 401
+
+    # 4. Production refuses to start if default insecure keys are registered
+    monkeypatch.setattr(settings, "webhook_token", "valid_prod_token")
+    default_hash = next(iter(DEFAULT_INSECURE_KEY_HASHES))
+    _DYNAMIC_API_KEYS[default_hash] = {
+        "tenant_id": "storefront",
+        "role": "admin",
+        "name": "Default Dev Key",
+        "revoked": False,
+    }
+    with pytest.raises(RuntimeError) as exc_prod:
+        validate_security_configuration()
+    assert "Default insecure API key is registered in production" in str(exc_prod.value)
+
+    # When all default insecure keys are revoked or removed, validation passes in production
+    saved_keys = dict(_DYNAMIC_API_KEYS)
+    try:
+        for dh in DEFAULT_INSECURE_KEY_HASHES:
+            _DYNAMIC_API_KEYS.pop(dh, None)
+        validate_security_configuration()  # Should not raise!
+    finally:
+        _DYNAMIC_API_KEYS.update(saved_keys)
+
+
+def test_key_management_api_endpoints():
+    """Verify admin API key management endpoints (GET /api/keys, POST /api/keys, DELETE /api/keys/{key_hash})."""
+    from fastapi.testclient import TestClient
+    from app.main import app
+    from app.security import register_api_key
+
+    register_api_key("key_admin_manager", tenant_id="storefront", role="admin")
+    register_api_key("key_viewer_guest", tenant_id="storefront", role="viewer")
+    client = TestClient(app)
+
+    # 1. Viewer role cannot access key management (403)
+    r_view = client.get("/api/keys", headers={"Authorization": "Bearer key_viewer_guest"})
+    assert r_view.status_code == 403
+
+    # 2. Admin can list keys
+    r_list = client.get("/api/keys", headers={"Authorization": "Bearer key_admin_manager"})
+    assert r_list.status_code == 200
+    assert "keys" in r_list.json()
+
+    # 3. Admin can create new key
+    r_create = client.post(
+        "/api/keys",
+        headers={"Authorization": "Bearer key_admin_manager"},
+        json={"tenant_id": "payments", "role": "responder", "name": "Created Key"},
+    )
+    assert r_create.status_code == 201
+    created_data = r_create.json()
+    assert "raw_key" in created_data
+    new_raw_key = created_data["raw_key"]
+    key_hash = created_data["key_record"]["key_hash"]
+
+    # 4. Admin can revoke key by hash
+    r_revoke = client.delete(f"/api/keys/{key_hash}", headers={"Authorization": "Bearer key_admin_manager"})
+    assert r_revoke.status_code == 200
+    assert r_revoke.json()["status"] == "revoked"
+
+    # Revoked key cannot authenticate
+    r_fail = client.get(f"/api/incidents/inc_test/stream?token={new_raw_key}")
+    assert r_fail.status_code == 401
+
 
 
 

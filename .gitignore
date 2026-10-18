@@ -52,3 +52,15 @@ Thumbs.db
 
 # FalkorDB data volume
 data/falkordb/
+
+# Security and local data files
+data/api_keys.json
+data/api_keys_seed.json
+data/alert_dedupe.json
+backend/data/api_keys.json
+backend/data/api_keys_seed.json
+backend/data/alert_dedupe.json
+backend/data/events/
+backend/data/replay_cache/
+
+

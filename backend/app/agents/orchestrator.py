@@ -38,10 +38,41 @@ class IncidentEventBus:
         self._history: dict[str, list[dict[str, Any]]] = defaultdict(list)
         # Sequence counter per incident
         self._seq: dict[str, int] = defaultdict(int)
+        # Incident tenant tracking: incident_id -> tenant_id
+        self._incident_tenants: dict[str, str] = {}
         try:
             os.makedirs(EVENTS_PERSIST_DIR, exist_ok=True)
         except Exception:
             pass
+
+    def set_incident_tenant(self, incident_id: str, tenant_id: str) -> None:
+        """Associate an incident with its tenant ID."""
+        if incident_id and tenant_id:
+            self._incident_tenants[incident_id] = str(tenant_id)
+
+    def get_incident_tenant(self, incident_id: str) -> str | None:
+        """Lookup tenant ID for an incident, checking memory, history, and disk logs."""
+        if not incident_id:
+            return None
+        if incident_id in self._incident_tenants:
+            return self._incident_tenants[incident_id]
+
+        # Check in-memory history
+        for ev in self._history.get(incident_id, []):
+            t = ev.get("data", {}).get("tenant_id")
+            if t:
+                self._incident_tenants[incident_id] = str(t)
+                return str(t)
+
+        # Check persisted events
+        persisted = self._load_persisted_events(incident_id)
+        for ev in persisted:
+            t = ev.get("data", {}).get("tenant_id")
+            if t:
+                self._incident_tenants[incident_id] = str(t)
+                return str(t)
+
+        return None
 
     def _persist_event(self, incident_id: str, event: dict[str, Any]) -> None:
         """Append event to persistent JSONL log on disk."""
@@ -71,6 +102,8 @@ class IncidentEventBus:
     def publish(self, incident_id: str, event_type: str, data: dict[str, Any]) -> dict[str, Any]:
         self._seq[incident_id] += 1
         seq = self._seq[incident_id]
+        if data and "tenant_id" in data:
+            self.set_incident_tenant(incident_id, str(data["tenant_id"]))
         event = {
             "id": f"{incident_id}_{seq}",
             "seq": seq,
@@ -199,12 +232,14 @@ class IncidentOrchestrator:
             "scenario_id": scenario_id or "",
             "opened_ts": ref_ts,
         })
+        event_bus.set_incident_tenant(inc_id, graph.tenant_id)
         event_bus.publish(inc_id, "incident_opened", {
             "incident_id": inc_id,
             "service": service_name,
             "alert": alert,
+            "tenant_id": graph.tenant_id,
         })
-        notify_incident_event(graph, "incident_opened", inc_id, {"service": service_name, "alert": alert})
+        notify_incident_event(graph, "incident_opened", inc_id, {"service": service_name, "alert": alert, "tenant_id": graph.tenant_id})
 
         # Step 2: Triage Phase
         graph.query("MATCH (i:Incident {id: $id}) SET i.status = 'triaging'", {"id": inc_id})
