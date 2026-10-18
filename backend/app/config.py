@@ -37,6 +37,7 @@ class Settings(BaseSettings):
         "recent_deploy": 2.5,
         "architecture_change": 2.5,
         "dependency_path": 1.5,
+        "upstream_suspect": 1.5,
         "past_incident": 2.0,
         "decision": 1.0,
         "doc": 1.0,
@@ -47,6 +48,7 @@ class Settings(BaseSettings):
         "recent_deploy": 6.0,
         "architecture_change": 24.0,
         "dependency_path": None,  # No decay
+        "upstream_suspect": None,  # No decay
         "past_incident": 720.0,   # 30 days
         "decision": 2160.0,       # 90 days
         "doc": 2160.0,            # 90 days

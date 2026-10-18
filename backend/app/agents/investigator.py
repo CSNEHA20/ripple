@@ -260,7 +260,7 @@ class InvestigatorAgent:
                     callee = t_res.get("callee")
                     for h in scored_hyps:
                         if h.get("service") == callee:
-                            topo_source = t_res.get("source") or ("discovered" if t_res.get("unverified_count", 0) == 0 else "seeded")
+                            topo_source = t_res.get("source") or ("real" if t_res.get("unverified_count", 0) == 0 else "seeded")
                             ev_id = f"ev_tool_{h['id']}_path_{len(evidence_by_hyp_id[h['id']]['supporting'])+1}"
                             new_ev = {
                                 "id": ev_id,
@@ -282,18 +282,19 @@ class InvestigatorAgent:
                 suspects = t_res.get("suspects", [])
                 for s in suspects:
                     s_name = s.get("service")
+                    s_hops = s.get("hops", s.get("depth", 1))
                     for h in scored_hyps:
                         if h.get("service") == s_name:
-                            topo_source = s.get("source") or "discovered"
+                            topo_source = s.get("source") or ("real" if s_hops == 0 or s.get("deps_known") else "discovered")
                             ev_id = f"ev_tool_{h['id']}_upstream_{len(evidence_by_hyp_id[h['id']]['supporting'])+1}"
                             new_ev = {
                                 "id": ev_id,
                                 "hypothesis_id": h["id"],
                                 "service": s_name,
-                                "type": "dependency_path",
+                                "type": "upstream_suspect",
                                 "kind": "observed",
                                 "polarity": "support",
-                                "summary": f"Topological upstream suspect '{s_name}' identified at depth {s.get('depth', 1)}.",
+                                "summary": f"Topological upstream suspect '{s_name}' identified at depth {s_hops}.",
                                 "source_ref": "upstream_suspects_tool",
                                 "observed_ts": ref_ts,
                                 "freshness": 1.0,
@@ -331,6 +332,42 @@ class InvestigatorAgent:
             scored_hyps, re_trace = score_hypotheses(scored_hyps, evidence_by_hyp_id, as_of=ref_ts)
             trace.merge(re_trace)
             top_hyp = scored_hyps[0] if scored_hyps else None
+
+            # Persist newly generated evidence into FalkorDB graph (T8)
+            for h in scored_hyps:
+                for ev in evidence_by_hyp_id[h["id"]]["supporting"]:
+                    ev_cypher = """
+                    MERGE (e:Evidence {id: $id})
+                    SET e.kind = $kind,
+                        e.type = $type,
+                        e.summary = $summary,
+                        e.source_ref = $source_ref,
+                        e.observed_ts = $observed_ts,
+                        e.freshness = $freshness,
+                        e.weight = $weight,
+                        e.source = $source
+                    WITH e
+                    MATCH (h:Hypothesis {id: $hyp_id})
+                    MERGE (h)-[r:SUPPORTED_BY]->(e)
+                    SET r.weight = $weight
+                    """
+                    graph.query(ev_cypher, {
+                        "id": ev["id"],
+                        "kind": ev.get("kind", "observed"),
+                        "type": ev.get("type", "dependency_path"),
+                        "summary": ev.get("summary", ""),
+                        "source_ref": ev.get("source_ref", ""),
+                        "observed_ts": float(ev.get("observed_ts", ref_ts)),
+                        "freshness": float(ev.get("freshness", 1.0)),
+                        "weight": float(ev.get("weight", 1.5)),
+                        "source": ev.get("source", "real"),
+                        "hyp_id": h["id"],
+                    })
+                # Update hypothesis score
+                graph.query(
+                    "MATCH (h:Hypothesis {id: $hyp_id}) SET h.evidence_score = $score, h.margin = $margin",
+                    {"hyp_id": h["id"], "score": float(h.get("evidence_score", 0.0)), "margin": float(h.get("margin", 0.0))},
+                )
 
 
         # 5. Record Observation on blackboard

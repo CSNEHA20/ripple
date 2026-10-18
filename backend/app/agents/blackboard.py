@@ -328,8 +328,8 @@ def get_blackboard_state(graph: TenantGraph, incident_id: str) -> dict[str, Any]
     OPTIONAL MATCH (h)-[cr:CONTRADICTED_BY]->(ce:Evidence)
     RETURN h.id AS id, h.statement AS statement, h.status AS status, h.evidence_score AS score,
            h.margin AS margin, s.name AS service,
-           collect(DISTINCT {id: se.id, summary: se.summary, weight: sr.weight}) AS supporting,
-           collect(DISTINCT {id: ce.id, summary: ce.summary, weight: cr.weight}) AS contradicting
+           collect(DISTINCT {id: se.id, summary: se.summary, weight: sr.weight, source: se.source, type: se.type}) AS supporting,
+           collect(DISTINCT {id: ce.id, summary: ce.summary, weight: cr.weight, source: ce.source, type: ce.type}) AS contradicting
     """
     hyp_res = graph.query(hyp_q, {"incident_id": incident_id})
     hypotheses = []

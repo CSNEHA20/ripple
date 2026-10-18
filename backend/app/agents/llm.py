@@ -4,6 +4,7 @@ import json
 import logging
 import os
 import re
+import time
 from typing import Any, Sequence, Type, TypeVar
 import httpx
 from pydantic import BaseModel
@@ -27,25 +28,38 @@ def get_cache_key(prompt: str, extra: str = "") -> str:
 
 
 def load_from_replay_cache(key: str) -> dict[str, Any] | None:
-    """Load cached response if exists."""
+    """Load cached response if exists, ensuring source tag is present."""
     os.makedirs(REPLAY_CACHE_DIR, exist_ok=True)
     cache_file = os.path.join(REPLAY_CACHE_DIR, f"{key}.json")
     if os.path.exists(cache_file):
         try:
             with open(cache_file, "r", encoding="utf-8") as f:
-                return json.load(f)
+                data = json.load(f)
+                if isinstance(data, dict):
+                    data.setdefault("source", "replay")
+                return data
         except Exception as e:
             logger.warning(f"Failed to read replay cache file {cache_file}: {e}")
     return None
 
 
-def save_to_replay_cache(key: str, data: dict[str, Any]) -> None:
-    """Persist generated response to replay cache."""
+def save_to_replay_cache(
+    key: str,
+    data: dict[str, Any],
+    source: str = "replay",
+    provider: str | None = None,
+) -> None:
+    """Persist generated response to replay cache, explicitly labeled 'replay'."""
     try:
         os.makedirs(REPLAY_CACHE_DIR, exist_ok=True)
         cache_file = os.path.join(REPLAY_CACHE_DIR, f"{key}.json")
+        payload = dict(data)
+        payload["source"] = source
+        if provider:
+            payload["provider"] = provider
+        payload["cached_at"] = time.time()
         with open(cache_file, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=2)
+            json.dump(payload, f, indent=2)
     except Exception as e:
         logger.warning(f"Failed to write replay cache: {e}")
 
@@ -387,38 +401,186 @@ class GeminiProvider(BaseLLMProvider):
         return None
 
 
+class LLMResolution(BaseModel):
+    mode: str  # "live" | "replay"
+    provider: str | None = None
+    is_live_available: bool = False
+    degraded: bool = False
+    reason: str | None = None
+
+
+def get_active_provider_name() -> str | None:
+    """Return active provider name from settings or env, normalized to lowercase."""
+    provider = settings.llm_provider or os.getenv("LLM_PROVIDER")
+    if provider:
+        p_clean = provider.strip().lower()
+        if p_clean in ("nvidia", "nemotron"):
+            return "nvidia"
+        if p_clean in ("openai", "anthropic", "gemini"):
+            return p_clean
+        return p_clean
+    return None
+
+
 def get_llm_provider() -> BaseLLMProvider | None:
-    """Resolve active LLM provider from settings/env."""
-    provider_name = os.getenv("LLM_PROVIDER", "").lower()
+    """Resolve active LLM provider strictly based on settings.llm_provider / LLM_PROVIDER.
+    Never falls back to 'any key present'.
+    """
+    provider_name = get_active_provider_name()
+    if not provider_name:
+        return None
 
-    if (provider_name == "openai" or not provider_name) and settings.openai_api_key:
-        return OpenAIProvider(api_key=settings.openai_api_key)
+    if provider_name == "openai":
+        if settings.openai_api_key:
+            return OpenAIProvider(api_key=settings.openai_api_key)
+        logger.warning("LLM provider configured as 'openai' but openai_api_key is missing.")
+        return None
 
-    if (provider_name in ("nvidia", "nemotron") or not provider_name) and (settings.nvidia_api_key or settings.nemotron_api_key):
+    if provider_name == "nvidia":
         key = settings.nvidia_api_key or settings.nemotron_api_key
-        return NVIDIAProvider(
-            api_key=key,
-            base_url=settings.nvidia_base_url,
-            model=settings.nemotron_model,
-        )
+        if key:
+            return NVIDIAProvider(
+                api_key=key,
+                base_url=settings.nvidia_base_url,
+                model=settings.nemotron_model,
+            )
+        logger.warning("LLM provider configured as 'nvidia' but nvidia_api_key/nemotron_api_key is missing.")
+        return None
 
-    if (provider_name == "anthropic" or not provider_name) and settings.anthropic_api_key:
-        return AnthropicProvider(api_key=settings.anthropic_api_key)
+    if provider_name == "anthropic":
+        if settings.anthropic_api_key:
+            return AnthropicProvider(api_key=settings.anthropic_api_key)
+        logger.warning("LLM provider configured as 'anthropic' but anthropic_api_key is missing.")
+        return None
 
-    if (provider_name == "gemini" or not provider_name) and settings.gemini_api_key:
-        return GeminiProvider(api_key=settings.gemini_api_key)
+    if provider_name == "gemini":
+        if settings.gemini_api_key:
+            return GeminiProvider(api_key=settings.gemini_api_key)
+        logger.warning("LLM provider configured as 'gemini' but gemini_api_key is missing.")
+        return None
 
     return None
+
+
+def resolve_llm_mode(requested_mode: str | None = None) -> LLMResolution:
+    """Resolve effective LLM mode ('live' or 'replay') strictly adhering to settings.llm_provider.
+    
+    If requested_mode == 'live':
+      - If llm_provider is set and valid provider instance can be created -> live
+      - Otherwise -> degrades to 'replay', sets degraded=True with clear reason.
+    If requested_mode is None (auto-detect in webhook / approve):
+      - If llm_provider is set and valid provider instance can be created -> live
+      - Otherwise -> 'replay', degraded=False.
+    If requested_mode == 'replay':
+      - Returns 'replay'.
+    """
+    provider_name = get_active_provider_name()
+    provider_instance = get_llm_provider()
+    is_available = provider_instance is not None
+
+    if requested_mode == "live":
+        if is_available:
+            return LLMResolution(
+                mode="live",
+                provider=provider_name,
+                is_live_available=True,
+                degraded=False,
+            )
+        else:
+            reason = (
+                f"Requested live mode but provider '{provider_name}' has no valid API key"
+                if provider_name
+                else "Requested live mode but no llm_provider configured in settings/env"
+            )
+            return LLMResolution(
+                mode="replay",
+                provider=provider_name,
+                is_live_available=False,
+                degraded=True,
+                reason=reason,
+            )
+
+    if requested_mode is None:
+        if is_available:
+            return LLMResolution(
+                mode="live",
+                provider=provider_name,
+                is_live_available=True,
+                degraded=False,
+            )
+        else:
+            return LLMResolution(
+                mode="replay",
+                provider=provider_name,
+                is_live_available=False,
+                degraded=False,
+            )
+
+    # Explicit "replay" or other
+    return LLMResolution(
+        mode="replay",
+        provider=provider_name,
+        is_live_available=is_available,
+        degraded=False,
+    )
+
+
+def mark_llm_degraded(
+    graph: Any = None,
+    incident_id: str | None = None,
+    provider: str | None = None,
+    reason: str = "LLM provider call failed",
+) -> None:
+    """Flag incident as llm_degraded in FalkorDB and publish llm_degraded event on event bus."""
+    active_prov = provider or get_active_provider_name() or "unknown"
+    if graph and incident_id:
+        try:
+            graph.query(
+                "MATCH (i:Incident {id: $id}) SET i.llm_degraded = true, i.llm_degraded_reason = $reason, i.llm_provider = $provider",
+                {"id": incident_id, "reason": reason, "provider": active_prov},
+            )
+        except Exception as e:
+            logger.debug(f"Could not persist llm_degraded flag on incident {incident_id}: {e}")
+
+    if incident_id:
+        try:
+            from app.agents.orchestrator import event_bus
+            event_bus.publish(
+                incident_id,
+                "llm_degraded",
+                {
+                    "incident_id": incident_id,
+                    "provider": active_prov,
+                    "error": reason,
+                    "timestamp": time.time(),
+                },
+            )
+        except Exception as bus_err:
+            logger.debug(f"Could not publish llm_degraded event on event bus: {bus_err}")
 
 
 class LLMWrapper:
     """LLM wrapper supporting 'live' and 'replay' modes, multi-provider dispatch,
     schema validation, and mandatory citation enforcement with a 1-retry policy.
+    Matches telemetry_degraded behavior by surfacing llm_degraded on failures.
     """
 
-    def __init__(self, mode: str = "replay"):
-        self.mode = mode
-        self.provider = get_llm_provider() if mode == "live" else None
+    def __init__(self, mode: str = "replay", incident_id: str | None = None, graph: Any = None):
+        self.incident_id = incident_id
+        self.graph = graph
+        self.llm_degraded = False
+
+        resolution = resolve_llm_mode(mode)
+        self.mode = resolution.mode
+        if resolution.degraded:
+            self.llm_degraded = True
+            mark_llm_degraded(
+                graph=self.graph,
+                incident_id=self.incident_id,
+                provider=resolution.provider,
+                reason=resolution.reason or "Live mode requested but provider unconfigured or key missing",
+            )
+        self.provider = get_llm_provider() if self.mode == "live" else None
 
     def call_structured(
         self,
@@ -444,7 +606,21 @@ class LLMWrapper:
         # 2. If live mode and API provider configured, attempt provider call
         res_dict = None
         if self.mode == "live" and self.provider:
-            res_dict = self.provider.complete_structured(prompt, system_prompt, schema)
+            try:
+                res_dict = self.provider.complete_structured(prompt, system_prompt, schema)
+                if res_dict is None:
+                    raise RuntimeError(f"Provider {self.provider.__class__.__name__} failed to return structured response")
+            except Exception as e:
+                logger.warning(f"Live LLM provider call failed: {e}. Degrading LLM to fallback/replay.")
+                self.mode = "replay"
+                self.llm_degraded = True
+                mark_llm_degraded(
+                    graph=self.graph,
+                    incident_id=self.incident_id,
+                    provider=get_active_provider_name(),
+                    reason=str(e),
+                )
+                res_dict = None
 
         # 3. Fallback to deterministic generator if live call didn't return or mode is replay
         if res_dict is None and fallback_generator:
@@ -471,7 +647,11 @@ class LLMWrapper:
             if cached_retry:
                 res_dict = cached_retry
             elif self.mode == "live" and self.provider:
-                res_dict = self.provider.complete_structured(retry_prompt, system_prompt, schema)
+                try:
+                    res_dict = self.provider.complete_structured(retry_prompt, system_prompt, schema)
+                except Exception as retry_err:
+                    logger.warning(f"Live LLM provider retry call failed: {retry_err}")
+                    res_dict = None
 
             if res_dict is None and fallback_generator:
                 res_dict = fallback_generator(context_data or {}, enforce_citations=available_ids)
@@ -484,8 +664,8 @@ class LLMWrapper:
                         res_dict[k] = f"{v} (Citations: {cites_str})"
                         break
 
-        # Cache response
-        save_to_replay_cache(cache_key, res_dict)
+        # Cache response explicitly labeled as "replay"
+        save_to_replay_cache(cache_key, res_dict, source="replay", provider=get_active_provider_name())
 
         try:
             return schema.model_validate(res_dict)

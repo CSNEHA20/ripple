@@ -5,7 +5,14 @@ from pydantic import BaseModel
 from app.tenancy import TenantGraph
 from app.trace import Trace, ToolResult
 from app.tools.registry import TOOL_SCHEMAS, execute_tool
-from app.agents.llm import LLMWrapper, get_llm_provider
+from app.tools.registry import TOOL_SCHEMAS, execute_tool
+from app.agents.llm import (
+    LLMWrapper,
+    get_llm_provider,
+    resolve_llm_mode,
+    mark_llm_degraded,
+    get_active_provider_name,
+)
 
 logger = logging.getLogger("ripple.agents.tool_loop")
 
@@ -21,12 +28,26 @@ class ToolLoop:
     - Executes tools via execute_tool against the live FalkorDB tenant graph.
     - Emits TraceSteps so the Cypher inspector captures all queries.
     - Enforces citation guardrails and structured schema compliance.
+    - Tracks and surfaces llm_degraded state matching telemetry_degraded.
     """
 
-    def __init__(self, mode: str = "replay"):
-        self.mode = mode
-        self.llm_wrapper = LLMWrapper(mode=mode)
-        self.provider = get_llm_provider() if mode == "live" else None
+    def __init__(self, mode: str = "replay", incident_id: str | None = None, graph: TenantGraph | None = None):
+        self.incident_id = incident_id
+        self.graph = graph
+        self.llm_degraded = False
+
+        resolution = resolve_llm_mode(mode)
+        self.mode = resolution.mode
+        if resolution.degraded:
+            self.llm_degraded = True
+            mark_llm_degraded(
+                graph=self.graph,
+                incident_id=self.incident_id,
+                provider=resolution.provider,
+                reason=resolution.reason or "Live mode requested but provider unconfigured or key missing",
+            )
+        self.llm_wrapper = LLMWrapper(mode=self.mode, incident_id=incident_id, graph=graph)
+        self.provider = get_llm_provider() if self.mode == "live" else None
 
     def run(
         self,
@@ -133,6 +154,13 @@ class ToolLoop:
                             })
                 except Exception as loop_err:
                     logger.warning(f"Tool loop error on step {step_idx}: {loop_err}")
+                    self.llm_degraded = True
+                    mark_llm_degraded(
+                        graph=graph,
+                        incident_id=getattr(self, "incident_id", None),
+                        provider=get_active_provider_name(),
+                        reason=str(loop_err),
+                    )
                     break
 
         # 2. If pre_executed_tools were supplied or fallback needed, record their traces

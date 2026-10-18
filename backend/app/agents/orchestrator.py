@@ -261,6 +261,18 @@ class IncidentOrchestrator:
         })
         notify_incident_event(graph, "incident_opened", inc_id, {"service": service_name, "alert": alert, "tenant_id": graph.tenant_id})
 
+        # Bind incident_id and graph to agent wrappers for llm_degraded tracking (T8)
+        for ag in [self.triage_agent, self.investigator_agent, self.responder_agent]:
+            if hasattr(ag, "tool_loop"):
+                ag.tool_loop.incident_id = inc_id
+                ag.tool_loop.graph = graph
+            if hasattr(ag, "llm"):
+                ag.llm.incident_id = inc_id
+                ag.llm.graph = graph
+        if hasattr(self.verifier_agent, "llm"):
+            self.verifier_agent.llm.incident_id = inc_id
+            self.verifier_agent.llm.graph = graph
+
         # Step 2: Triage Phase
         graph.query("MATCH (i:Incident {id: $id}) SET i.status = 'triaging'", {"id": inc_id})
         event_bus.publish(inc_id, "agent_started", {"agent": "Triage", "role": "triage"})

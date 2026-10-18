@@ -186,7 +186,8 @@ def persist_hypotheses_and_evidence(
                 e.source_ref = $source_ref,
                 e.observed_ts = $observed_ts,
                 e.freshness = $freshness,
-                e.weight = $weight
+                e.weight = $weight,
+                e.source = $source
             """
             graph.query(ev_cypher, {
                 "id": ev_id,
@@ -197,6 +198,7 @@ def persist_hypotheses_and_evidence(
                 "observed_ts": float(ev["observed_ts"]),
                 "freshness": float(ev["freshness"]),
                 "weight": float(ev["weight"]),
+                "source": ev.get("source", "seeded"),
             })
 
             # (Hypothesis)-[:SUPPORTED_BY {weight}]->(Evidence)
@@ -224,7 +226,8 @@ def persist_hypotheses_and_evidence(
                 e.source_ref = $source_ref,
                 e.observed_ts = $observed_ts,
                 e.freshness = $freshness,
-                e.weight = $weight
+                e.weight = $weight,
+                e.source = $source
             """
             graph.query(ev_cypher, {
                 "id": ev_id,
@@ -235,6 +238,7 @@ def persist_hypotheses_and_evidence(
                 "observed_ts": float(ev["observed_ts"]),
                 "freshness": float(ev["freshness"]),
                 "weight": float(ev["weight"]),
+                "source": ev.get("source", "seeded"),
             })
 
             # (Hypothesis)-[:CONTRADICTED_BY {weight}]->(Evidence)

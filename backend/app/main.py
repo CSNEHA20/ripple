@@ -17,6 +17,12 @@ from app.tenancy import TenantGraph, ensure_tenant, get_falkordb_client, sanitiz
 from app.schema import ensure_tenant_schema
 from app.ingest.bootstrap import bootstrap_tenant_all, bootstrap_second_tenant
 from app.ingest.embed import embed_text
+from app.agents.llm import (
+    resolve_llm_mode,
+    mark_llm_degraded,
+    get_active_provider_name,
+    get_llm_provider,
+)
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 logger = logging.getLogger("ripple.backend")
@@ -434,9 +440,9 @@ async def alert_webhook(
                 "service": service,
             }
 
-        # Multi-provider selection (Fix I6)
-        has_live_llm = bool(settings.openai_api_key or settings.gemini_api_key or settings.anthropic_api_key or settings.nvidia_api_key)
-        mode = "live" if has_live_llm else "replay"
+        # Strict provider resolution via resolve_llm_mode (T8)
+        resolution = resolve_llm_mode(None)
+        mode = resolution.mode
 
         if sync:
             orchestrator = IncidentOrchestrator(mode=mode)
@@ -1143,6 +1149,7 @@ class ActionApprovalRequest(BaseModel):
     as_of: float | None = None
     verification_window_seconds: float | None = None
     verification_poll_step_seconds: float | None = None
+    mode: str | None = None
 
 
 class ActionRejectionRequest(BaseModel):
@@ -1199,9 +1206,20 @@ def api_run_incident_crew(
         )
         inc_id = req.incident_id or f"inc_{uuid.uuid4().hex[:8]}"
 
+        resolution = resolve_llm_mode(req.mode)
+        effective_mode = resolution.mode
+
+        if resolution.degraded:
+            mark_llm_degraded(
+                graph=graph,
+                incident_id=inc_id,
+                provider=resolution.provider,
+                reason=resolution.reason or "Live mode requested but provider unconfigured or key missing",
+            )
+
         if is_async:
             def _run_bg():
-                orchestrator = IncidentOrchestrator(mode=req.mode)
+                orchestrator = IncidentOrchestrator(mode=effective_mode)
                 orchestrator.run_crew(
                     graph=graph,
                     alert=req.alert,
@@ -1224,7 +1242,7 @@ def api_run_incident_crew(
                 },
             )
 
-        orchestrator = IncidentOrchestrator(mode=req.mode)
+        orchestrator = IncidentOrchestrator(mode=effective_mode)
         result, trace = orchestrator.run_crew(
             graph=graph,
             alert=req.alert,
@@ -1257,13 +1275,23 @@ def api_get_incident(
 
     # Incident header info
     inc_res = graph.query(
-        "MATCH (i:Incident {id: $iid}) RETURN i.id AS id, i.title AS title, i.status AS status, i.opened_ts AS opened_ts, i.resolved_ts AS resolved_ts",
+        "MATCH (i:Incident {id: $iid}) RETURN i.id AS id, i.title AS title, i.status AS status, i.opened_ts AS opened_ts, i.resolved_ts AS resolved_ts, i.llm_degraded AS llm_degraded, i.llm_degraded_reason AS llm_degraded_reason, i.telemetry_degraded AS telemetry_degraded, i.telemetry_degraded_reason AS telemetry_degraded_reason",
         {"iid": incident_id},
     )
     inc_info = {}
     if inc_res and inc_res.result_set:
         r = inc_res.result_set[0]
-        inc_info = {"id": r[0], "title": r[1], "status": r[2], "opened_ts": r[3], "resolved_ts": r[4]}
+        inc_info = {
+            "id": r[0],
+            "title": r[1],
+            "status": r[2],
+            "opened_ts": r[3],
+            "resolved_ts": r[4],
+            "llm_degraded": bool(r[5]) if len(r) > 5 and r[5] is not None else False,
+            "llm_degraded_reason": r[6] if len(r) > 6 else None,
+            "telemetry_degraded": bool(r[7]) if len(r) > 7 and r[7] is not None else False,
+            "telemetry_degraded_reason": r[8] if len(r) > 8 else None,
+        }
 
     return {
         "incident": inc_info,
@@ -1360,7 +1388,8 @@ def api_approve_incident_action(
     Returns 202 Accepted and runs execution + verification asynchronously in background tasks, streaming events.
     Strictly requires 'responder' or 'admin' role.
     """
-    mode = "live" if (settings.openai_api_key or settings.gemini_api_key or settings.anthropic_api_key) else "replay"
+    resolution = resolve_llm_mode(req.mode)
+    mode = resolution.mode
     effective_approver = req.approver if req.approver and req.approver != "operator" else (auth.get("name") or auth.get("tenant_id") + "_responder")
 
     if sync:
@@ -1527,11 +1556,12 @@ def api_ask_brain(
 ):
     """Company-Brain Q&A: Natural language questions answered from the graph with sources."""
     try:
+        resolution = resolve_llm_mode(req.mode)
         result, trace = ask_brain(
             graph=graph,
             question=req.question,
             tenant_id=graph.tenant_id,
-            mode=req.mode,
+            mode=resolution.mode,
         )
         return {
             "status": "success",
@@ -2210,7 +2240,15 @@ def api_get_incident_audit(
 @app.get("/api/system/status")
 def api_system_status():
     """System status and complete observability data-health status."""
-    llm_status = "live" if settings.openai_api_key or settings.gemini_api_key or settings.anthropic_api_key else "degraded"
+    provider_name = get_active_provider_name()
+    provider_instance = get_llm_provider()
+    if provider_instance is not None:
+        llm_status = "live"
+    elif provider_name is not None:
+        llm_status = "degraded"
+    else:
+        llm_status = "unconfigured"
+
     falkor_status = "disconnected"
     try:
         client = get_falkordb_client()
@@ -2226,7 +2264,7 @@ def api_system_status():
         "version": "0.1.0",
         "environment": settings.environment,
         "falkordb": falkor_status,
-        "llm_provider": settings.llm_provider or "deterministic_fallback",
+        "llm_provider": provider_name or "deterministic_fallback",
         "llm_status": llm_status,
         "telemetry_source": settings.telemetry_source,
         "embeddings_backend": settings.embeddings_backend,

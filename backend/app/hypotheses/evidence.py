@@ -7,6 +7,7 @@ from app.trace import Trace, TraceStep
 from app.tools.changes import recent_changes
 from app.tools.incidents import service_health, similar_incidents
 from app.tools.paths import path_between
+from app.tools.root_cause import upstream_suspects
 
 logger = logging.getLogger("ripple.hypotheses.evidence")
 
@@ -147,6 +148,11 @@ def gather_evidence_for_hypotheses(
         for deps in all_deployments.values()
     )
 
+    # Pre-fetch upstream suspects
+    suspects_res = upstream_suspects(graph, service=alerting_service, max_depth=4, as_of=ref_ts)
+    trace.merge(suspects_res.trace)
+    suspects_map = {s["service"]: s for s in suspects_res.data.get("suspects", [])}
+
     evidence_by_hyp: dict[str, dict[str, list[dict[str, Any]]]] = {}
     total_evidence_count = 0
 
@@ -248,6 +254,24 @@ def gather_evidence_for_hypotheses(
                     kind="observed",
                     source="real",
                 )
+
+        # -------------------------------------------------------------
+        # 1b. Upstream Suspect Evidence (T8)
+        # -------------------------------------------------------------
+        if svc in suspects_map:
+            susp = suspects_map[svc]
+            s_hops = susp.get("hops", 0)
+            s_tier = susp.get("tier", "tier-2")
+            s_src = susp.get("source") or ("real" if s_hops == 0 or susp.get("deps_known") else "discovered")
+            add_ev(
+                ev_type="upstream_suspect",
+                polarity="support",
+                summary=f"Topological upstream suspect: '{svc}' ({s_tier}) is reachable within {s_hops} hop(s) from '{alerting_service}'.",
+                source_ref=f"upstream_{alerting_service}->{svc}",
+                observed_ts=ref_ts,
+                kind="observed",
+                source=s_src,
+            )
 
         # -------------------------------------------------------------
         # 2. Recent Deployment Evidence
@@ -357,6 +381,7 @@ def gather_evidence_for_hypotheses(
                 failed_rbs = inc.get("failed_runbooks", [])
 
                 # Check if this incident specifically implicates service `svc`
+                inc_src = inc.get("source", "seeded")
                 if svc.lower() in root_stmt or (svc in aff_svcs and "root" in str(aff_svcs)):
                     if resolved_rb:
                         add_ev(
@@ -366,6 +391,7 @@ def gather_evidence_for_hypotheses(
                             source_ref=inc_id,
                             observed_ts=inc_opened,
                             kind="inferred",
+                            source=inc_src,
                         )
                     if failed_rbs:
                         add_ev(
@@ -375,6 +401,7 @@ def gather_evidence_for_hypotheses(
                             source_ref=inc_id,
                             observed_ts=inc_opened,
                             kind="inferred",
+                            source=inc_src,
                         )
                 elif sim_score >= 0.65 and aff_svcs and svc not in aff_svcs:
                     # High similarity incident pointing to a completely different subsystem contradicts `svc`
@@ -385,6 +412,7 @@ def gather_evidence_for_hypotheses(
                         source_ref=inc_id,
                         observed_ts=inc_opened,
                         kind="inferred",
+                        source=inc_src,
                     )
 
         # -------------------------------------------------------------

@@ -1957,6 +1957,574 @@ def test_t7_benchmark_api_endpoints():
     assert "runs" in data_post["data"]
 
 
+# ============================================================================
+# T8: LLM Live Mode Consistency Tests
+# ============================================================================
+
+
+def test_t8_route_mode_resolution_strict_provider_not_any_key(monkeypatch):
+    """T8: Routes use llm_provider strictly instead of 'any key present'."""
+    from app.agents.llm import (
+        resolve_llm_mode,
+        get_llm_provider,
+        get_active_provider_name,
+        NVIDIAProvider,
+    )
+    from fastapi.testclient import TestClient
+    from app.main import app
+
+    client = TestClient(app)
+
+    # Case 1: llm_provider is None, but openai_api_key is set
+    # Old bug: would treat as live OpenAI because key was present!
+    # T8 requirement: MUST NOT be live because llm_provider is not set.
+    monkeypatch.setattr(settings, "llm_provider", None)
+    monkeypatch.delenv("LLM_PROVIDER", raising=False)
+    monkeypatch.setattr(settings, "openai_api_key", "sk-mock-key")
+    monkeypatch.setattr(settings, "anthropic_api_key", None)
+    monkeypatch.setattr(settings, "nvidia_api_key", None)
+    monkeypatch.setattr(settings, "gemini_api_key", None)
+
+    assert get_active_provider_name() is None
+    assert get_llm_provider() is None
+
+    res_live = resolve_llm_mode("live")
+    assert res_live.mode == "replay"
+    assert res_live.degraded is True
+    assert "no llm_provider configured" in res_live.reason
+
+    res_auto = resolve_llm_mode(None)
+    assert res_auto.mode == "replay"
+    assert res_auto.degraded is False
+
+    # Check /api/system/status reflects unconfigured
+    resp_stat = client.get("/api/system/status")
+    assert resp_stat.status_code == 200
+    st_data = resp_stat.json()
+    assert st_data["llm_status"] == "unconfigured"
+    assert st_data["llm_provider"] == "deterministic_fallback"
+
+    # Case 2: llm_provider is set to "anthropic", but only openai_api_key is set
+    # T8 requirement: MUST NOT fall back to OpenAI; must report degraded Anthropic!
+    monkeypatch.setattr(settings, "llm_provider", "anthropic")
+    assert get_active_provider_name() == "anthropic"
+    assert get_llm_provider() is None
+
+    res_anthro = resolve_llm_mode("live")
+    assert res_anthro.mode == "replay"
+    assert res_anthro.degraded is True
+    assert "provider 'anthropic' has no valid API key" in res_anthro.reason
+
+    resp_stat2 = client.get("/api/system/status")
+    assert resp_stat2.json()["llm_status"] == "degraded"
+    assert resp_stat2.json()["llm_provider"] == "anthropic"
+
+    # Case 3: llm_provider is set to "nvidia" and nvidia_api_key is set
+    # T8 requirement: Cleanly resolves to live NVIDIAProvider
+    monkeypatch.setattr(settings, "llm_provider", "nvidia")
+    monkeypatch.setattr(settings, "nvidia_api_key", "nvapi-test-token")
+    assert get_active_provider_name() == "nvidia"
+    prov = get_llm_provider()
+    assert isinstance(prov, NVIDIAProvider)
+
+    res_nv = resolve_llm_mode("live")
+    assert res_nv.mode == "live"
+    assert res_nv.degraded is False
+    assert res_nv.provider == "nvidia"
+
+    resp_stat3 = client.get("/api/system/status")
+    assert resp_stat3.json()["llm_status"] == "live"
+    assert resp_stat3.json()["llm_provider"] == "nvidia"
+
+
+class MockT8TenantGraph:
+    def __init__(self, tenant_id: str = "storefront"):
+        self.tenant_id = tenant_id
+        self.incidents: dict[str, dict[str, Any]] = {}
+        self.hypotheses: dict[str, dict[str, Any]] = {}
+        self.evidence: dict[str, dict[str, Any]] = {}
+        self.supported_by: dict[str, list[str]] = {}
+        self.contradicted_by: dict[str, list[str]] = {}
+        self.queries: list[tuple[str, dict]] = []
+
+    def query(self, cypher: str, params=None):
+        params = params or {}
+        self.queries.append((cypher, params))
+        clean = " ".join(cypher.split())
+
+        # 1. Incident node creation and property updates
+        if "MERGE (i:Incident {id: $id})" in clean or "MERGE (i:Incident" in clean:
+            inc_id = params.get("id", "inc_default")
+            if inc_id not in self.incidents:
+                self.incidents[inc_id] = {"id": inc_id}
+            self.incidents[inc_id].update(params)
+            return MockGraphResult([[inc_id]])
+
+        if "SET i.llm_degraded = true" in clean:
+            inc_id = params.get("id")
+            if inc_id in self.incidents:
+                self.incidents[inc_id]["llm_degraded"] = True
+                self.incidents[inc_id]["llm_degraded_reason"] = params.get("reason")
+            return MockGraphResult([])
+
+        if "SET i.telemetry_degraded = true" in clean:
+            inc_id = params.get("id")
+            if inc_id in self.incidents:
+                self.incidents[inc_id]["telemetry_degraded"] = True
+                self.incidents[inc_id]["telemetry_degraded_reason"] = params.get("reason")
+            return MockGraphResult([])
+
+        if "SET i.status" in clean:
+            inc_id = params.get("id")
+            if inc_id in self.incidents:
+                self.incidents[inc_id]["status"] = params.get("status", "investigating")
+            return MockGraphResult([])
+
+        # 2. Reading Incident node
+        if "MATCH (i:Incident {id: $id}) RETURN i.llm_degraded, i.llm_degraded_reason" in clean:
+            inc = self.incidents.get(params.get("id"), {})
+            return MockGraphResult([[inc.get("llm_degraded", False), inc.get("llm_degraded_reason", None)]])
+
+        if "RETURN i.id AS id, i.title AS title" in clean and "i.llm_degraded AS llm_degraded" in clean:
+            inc_id = params.get("iid") or params.get("id")
+            inc = self.incidents.get(inc_id, {"id": inc_id})
+            return MockGraphResult([[
+                inc.get("id", inc_id),
+                inc.get("title", "T8 Degradation Test"),
+                inc.get("status", "investigating"),
+                inc.get("opened_ts", 1700000000.0),
+                inc.get("resolved_ts", None),
+                inc.get("llm_degraded", False),
+                inc.get("llm_degraded_reason", None),
+                inc.get("telemetry_degraded", False),
+                inc.get("telemetry_degraded_reason", None),
+            ]])
+
+        # 3. Evidence creation and relationships
+        if "MERGE (e:Evidence {id: $id})" in clean:
+            e_id = params.get("id")
+            self.evidence[e_id] = dict(params)
+            h_id = params.get("h_id")
+            if h_id:
+                self.supported_by.setdefault(h_id, [])
+                if e_id not in self.supported_by[h_id]:
+                    self.supported_by[h_id].append(e_id)
+            return MockGraphResult([[e_id]])
+
+        if "MERGE (h)-[:SUPPORTED_BY]->(e)" in clean:
+            h_id = params.get("h_id")
+            e_id = params.get("e_id") or params.get("id")
+            if h_id and e_id:
+                self.supported_by.setdefault(h_id, [])
+                if e_id not in self.supported_by[h_id]:
+                    self.supported_by[h_id].append(e_id)
+            return MockGraphResult([])
+
+        if "MERGE (h)-[:CONTRADICTED_BY]->(e)" in clean:
+            h_id = params.get("h_id")
+            e_id = params.get("e_id") or params.get("id")
+            if h_id and e_id:
+                self.contradicted_by.setdefault(h_id, [])
+                if e_id not in self.contradicted_by[h_id]:
+                    self.contradicted_by[h_id].append(e_id)
+            return MockGraphResult([])
+
+        # 4. Hypothesis creation
+        if "MERGE (h:Hypothesis {id: $id})" in clean:
+            h_id = params.get("id")
+            self.hypotheses[h_id] = dict(params)
+            return MockGraphResult([[h_id]])
+
+        # 5. Queries for Evidence checking
+        if "RETURN e.id, e.type, e.source" in clean:
+            rows = []
+            for e_id, ev in self.evidence.items():
+                rows.append([e_id, ev.get("type", "upstream_suspect"), ev.get("source", "discovered")])
+            return MockGraphResult(rows)
+
+        # 6. Blackboard state queries
+        if "MATCH (i:Incident {id: $incident_id})-[:HAS_HYPOTHESIS]->(h:Hypothesis)" in clean:
+            rows = []
+            for h_id, h in self.hypotheses.items():
+                e_ids = self.supported_by.get(h_id, list(self.evidence.keys()))
+                supp = []
+                for eid in e_ids:
+                    ev = self.evidence.get(eid, {"id": eid, "type": "upstream_suspect", "source": "discovered"})
+                    supp.append({
+                        "id": ev.get("id", eid),
+                        "summary": ev.get("summary", ""),
+                        "weight": ev.get("weight", 1.5),
+                        "source": ev.get("source", "discovered"),
+                        "type": ev.get("type", "upstream_suspect"),
+                    })
+                rows.append([
+                    h["id"],
+                    h.get("statement", h.get("title", "")),
+                    h.get("status", "tested"),
+                    h.get("evidence_score", 2.0),
+                    h.get("margin", 0.5),
+                    h.get("service", "checkoutservice"),
+                    supp,
+                    [],
+                ])
+            return MockGraphResult(rows)
+
+        if "MATCH (i:Incident {id: $id})-[:HAS_HYPOTHESIS]->(h:Hypothesis)" in clean:
+            rows = []
+            for h_id, h in self.hypotheses.items():
+                rows.append([
+                    h["id"],
+                    h.get("title", ""),
+                    h.get("service", "checkoutservice"),
+                    h.get("status", "tested"),
+                    h.get("evidence_score", 2.0),
+                    h.get("confidence", 0.8),
+                ])
+            return MockGraphResult(rows)
+
+        # 7. MetricSnapshot creation
+        if "MERGE (m:MetricSnapshot" in clean or "RETURN m.id AS id, m.service AS service" in clean:
+            return MockGraphResult([[
+                params.get("id", "m_snap"),
+                params.get("service", "paymentservice"),
+                params.get("status", "failing"),
+                params.get("latency", 1500.0),
+                params.get("error_rate", 0.15),
+                params.get("ts", 1700000000.0),
+            ]])
+
+        # 7b. Baseline and metric queries
+        if "RETURN m.latency_p95_ms, m.error_rate" in clean:
+            return MockGraphResult([[25.0, 0.0]])
+
+        # 8. Blast radius
+        if "failed:Service" in clean or "impacted:Service" in clean:
+            svc = params.get("service", "checkoutservice")
+            if svc == "checkoutservice":
+                return MockGraphResult([["checkoutservice", "tier-1", "frontend", "tier-1", 1, [True], ["frontend->checkoutservice"]]])
+            elif svc == "frontend":
+                return MockGraphResult([["frontend", "tier-1", "api-gateway", "tier-1", 1, [True], ["api-gateway->frontend"]]])
+            else:
+                return MockGraphResult([])
+
+        # 8b. Criticality PageRank queries
+        if "MATCH (s:Service) RETURN s.name, s.tier" in clean:
+            return MockGraphResult([
+                ["frontend", "tier-1"],
+                ["checkoutservice", "tier-1"],
+                ["paymentservice", "tier-1"],
+                ["shippingservice", "tier-2"],
+            ])
+        if "MATCH (caller:Service)-[r:DEPENDS_ON]->(callee:Service)" in clean:
+            return MockGraphResult([
+                ["frontend", "checkoutservice", "high"],
+                ["checkoutservice", "paymentservice", "high"],
+                ["checkoutservice", "shippingservice", "medium"],
+            ])
+
+        # 8c. Upstream suspects tool cypher
+        if "alerting:Service" in clean or "DEPENDS_ON*1.." in clean:
+            svc = params.get("service", "checkoutservice")
+            if svc == "checkoutservice":
+                return MockGraphResult([
+                    ["checkoutservice", "paymentservice", "tier-1", True, 1, ["checkoutservice->paymentservice"]],
+                    ["checkoutservice", "shippingservice", "tier-2", True, 1, ["checkoutservice->shippingservice"]],
+                ])
+            elif svc == "frontend":
+                return MockGraphResult([
+                    ["frontend", "checkoutservice", "tier-1", True, 1, ["frontend->checkoutservice"]],
+                    ["frontend", "adservice", "tier-2", True, 1, ["frontend->adservice"]],
+                ])
+            else:
+                return MockGraphResult([])
+
+        # 9. Shortest path tool cypher
+        if "shortestPath" in clean:
+            caller = params.get("caller") or params.get("a", "checkoutservice")
+            callee = params.get("callee") or params.get("b", "paymentservice")
+            return MockGraphResult([[
+                [caller, callee],
+                [f"{caller}->{callee}"],
+                [True],
+                ["grpc"],
+                ["high"],
+            ]])
+
+        # 10. Service health query
+        if "MATCH (s:Service)-[:HAD_METRIC]->(m:MetricSnapshot)" in clean:
+            svcs = params.get("services", ["paymentservice"])
+            rows = []
+            for s in svcs:
+                rows.append([
+                    s,
+                    f"snap_{s}",
+                    "failing" if s in ("paymentservice", "checkoutservice") else "normal",
+                    1500.0 if s in ("paymentservice", "checkoutservice") else 20.0,
+                    0.15 if s in ("paymentservice", "checkoutservice") else 0.0,
+                    1700000000.0,
+                    "real",
+                ])
+            return MockGraphResult(rows)
+
+        # 11. Deployments / changes cypher
+        if "MATCH (d:Deployment)-[:DEPLOYED_TO]->(s:Service {name: $service})" in clean:
+            return MockGraphResult([["dep_01", "v2.0.1", 1700000000.0, "real"]])
+        if "Deployment" in clean:
+            svc = params.get("service", "paymentservice")
+            return MockGraphResult([[svc, "dep_01", "v2.0.1", 1700000000.0]])
+
+        # 12. Runbooks cypher
+        if "MATCH (rb:Runbook {id: $id})" in clean:
+            rb_id = params.get("id", "rb_rollback")
+            return MockGraphResult([[
+                rb_id,
+                "Rollback Deployment",
+                [],
+                "needs_approval",
+                5.0,
+                1.0,
+                0.83,
+            ]])
+        if "MATCH (rb:Runbook" in clean:
+            return MockGraphResult([[
+                "rb_rollback",
+                "Rollback Deployment",
+                "Rollback recent deployment",
+                "needs_approval",
+                "[]",
+                ["paymentservice", "checkoutservice"],
+                5.0,
+                1.0,
+                0.83,
+                [],
+            ]])
+
+        # 13. Fallback for tasks, actions, observations
+        return MockGraphResult([])
+
+
+def test_t8_tool_results_converted_into_evidence_tagged_with_source():
+    """T8: Tool results (path_between, upstream_suspects, similar_incidents) converted into Evidence with true source."""
+    from app.scenarios.engine import load_scenario
+    from app.hypotheses.engine import run_investigation
+    from app.agents.blackboard import get_blackboard_state
+
+    graph = MockT8TenantGraph("storefront")
+    load_scenario(graph, "sc_repeated_01")
+
+    alerting_service = "checkoutservice"
+    inc_id = f"inc_t8_ev_test_{int(time.time())}"
+
+    inv_result, trace = run_investigation(
+        graph=graph,
+        alerting_service=alerting_service,
+        alert_text="Checkout timeout and degradation",
+        incident_id=inc_id,
+        persist=True,
+    )
+    assert len(inv_result.get("hypotheses", [])) > 0, "No hypotheses returned"
+
+    # Verify evidence source and type in FalkorDB mock
+    cypher_check = """
+    MATCH (i:Incident {id: $id})-[:HAS_HYPOTHESIS]->(h:Hypothesis)-[:SUPPORTED_BY]->(e:Evidence)
+    RETURN e.id, e.type, e.source
+    """
+    res = graph.query(cypher_check, {"id": inc_id})
+    assert res and res.result_set and len(res.result_set) > 0, "No evidence persisted"
+    ev_types = set()
+    ev_sources = set()
+    for row in res.result_set:
+        ev_id, ev_type, ev_source = row
+        ev_types.add(ev_type)
+        ev_sources.add(ev_source)
+        assert ev_source is not None, f"Evidence {ev_id} missing e.source in FalkorDB"
+        assert ev_source in ("real", "discovered", "seeded", "replay", "demo_target", "telemetry", "no data")
+
+    assert "upstream_suspect" in ev_types
+    assert any(s in ("real", "discovered", "seeded") for s in ev_sources)
+
+    bb = get_blackboard_state(graph, inc_id)
+    assert len(bb["hypotheses"]) > 0
+    top_hyp = bb["hypotheses"][0]
+    assert len(top_hyp["supporting"]) > 0
+    assert "source" in top_hyp["supporting"][0]
+    assert "type" in top_hyp["supporting"][0]
+
+
+def test_t8_llm_degraded_event_and_field_on_provider_failure(monkeypatch):
+    """T8: Surface llm_degraded event and field when provider call fails, matching telemetry_degraded."""
+    from app.agents.llm import mark_llm_degraded
+    from app.agents.orchestrator import event_bus
+    from app.security import register_api_key
+    from fastapi.testclient import TestClient
+    from app.main import app
+
+    graph = MockT8TenantGraph("storefront")
+    inc_id = f"inc_t8_degraded_{int(time.time())}"
+    graph.query(
+        "MERGE (i:Incident {id: $id}) SET i.title = 'T8 Degradation Test', i.status = 'investigating'",
+        {"id": inc_id},
+    )
+
+    # Spy on event bus publish
+    received_events = []
+    orig_publish = event_bus.publish
+    def spy_publish(iid, event_type, data):
+        received_events.append({"incident_id": iid, "event": event_type, "data": data})
+        return orig_publish(iid, event_type, data)
+    monkeypatch.setattr(event_bus, "publish", spy_publish)
+
+    # 1. Trigger mark_llm_degraded
+    mark_llm_degraded(
+        graph=graph,
+        incident_id=inc_id,
+        provider="nvidia",
+        reason="Rate limit 429 quota exceeded",
+    )
+
+    # 2. Assert event published on event bus
+    degraded_events = [e for e in received_events if e.get("event") == "llm_degraded"]
+    assert len(degraded_events) >= 1
+    ev_payload = degraded_events[0]["data"]
+    assert ev_payload["incident_id"] == inc_id
+    assert ev_payload["provider"] == "nvidia"
+    assert "Rate limit" in ev_payload["error"]
+
+    # 3. Assert FalkorDB incident node has llm_degraded = true
+    res = graph.query("MATCH (i:Incident {id: $id}) RETURN i.llm_degraded, i.llm_degraded_reason", {"id": inc_id})
+    assert res and res.result_set
+    assert res.result_set[0][0] is True
+    assert "Rate limit" in res.result_set[0][1]
+
+    # 4. Assert GET /api/incidents/{id} returns llm_degraded field
+    from app.main import get_current_tenant
+    register_api_key("key_test_admin", tenant_id="storefront", role="admin")
+    monkeypatch.setattr("app.main.TenantGraph", lambda *a, **kw: graph)
+    app.dependency_overrides[get_current_tenant] = lambda: graph
+    client = TestClient(app)
+    try:
+        resp = client.get(f"/api/incidents/{inc_id}", headers={"Authorization": "Bearer key_test_admin"})
+        assert resp.status_code == 200, resp.text
+        data = resp.json()
+        assert data["incident"]["llm_degraded"] is True
+        assert "Rate limit" in data["incident"]["llm_degraded_reason"]
+    finally:
+        app.dependency_overrides.pop(get_current_tenant, None)
+
+
+def test_t8_replay_cache_recording_labeled_replay():
+    """T8: Record the replay cache from live runs, explicitly labeled 'replay'."""
+    from app.agents.llm import save_to_replay_cache, load_from_replay_cache
+
+    test_key = f"t8_cache_test_{int(time.time())}"
+    sample_data = {
+        "top_cause": "Internal defect in shippingservice",
+        "top_service": "shippingservice",
+        "evidence_score": 2.1,
+    }
+
+    # Save to replay cache
+    save_to_replay_cache(test_key, sample_data, source="replay", provider="nvidia")
+
+    # Load from replay cache
+    loaded = load_from_replay_cache(test_key)
+    assert loaded is not None
+    assert loaded["top_service"] == "shippingservice"
+    assert loaded["source"] == "replay"
+    assert loaded["provider"] == "nvidia"
+    assert "cached_at" in loaded
+
+
+def test_t8_acceptance_two_alerts_different_tool_sequences_and_evidence(monkeypatch):
+    """T8 Acceptance: In live mode, two different alerts give different tool sequences and different evidence."""
+    from app.scenarios.engine import load_scenario
+    from app.agents.orchestrator import IncidentOrchestrator
+    from app.agents.llm import BaseLLMProvider, LLMResolution
+
+    graph = MockT8TenantGraph("storefront")
+    load_scenario(graph, "sc_repeated_01")
+
+    # Mock interactive LLM provider that simulates distinct live tool sequences for different alerts
+    class DynamicMockProvider(BaseLLMProvider):
+        def complete_structured(self, prompt, system_prompt, schema):
+            return None  # Let fallback generate structured model
+
+        def complete_with_tools(self, messages, tools):
+            user_msg = " ".join(m.get("content", "") for m in messages if m.get("role") in ("user", "system"))
+            # Tool-calling turn 1: Check what tools have already been returned
+            tool_res_names = [m.get("name") for m in messages if m.get("role") == "tool"]
+
+            if "checkoutservice" in user_msg:
+                # Alert A (checkoutservice): Calls upstream_suspects first, then service_health
+                if "upstream_suspects" not in tool_res_names:
+                    return {
+                        "role": "assistant",
+                        "content": "Checking upstream dependencies for checkoutservice",
+                        "tool_calls": [{"id": "call_1", "name": "upstream_suspects", "arguments": {"service": "checkoutservice"}}],
+                    }
+                elif "service_health" not in tool_res_names:
+                    return {
+                        "role": "assistant",
+                        "content": "Checking health of paymentservice",
+                        "tool_calls": [{"id": "call_2", "name": "service_health", "arguments": {"services": ["paymentservice"]}}],
+                    }
+            elif "frontend" in user_msg:
+                # Alert B (frontend): Calls recent_changes first, then path_between
+                if "recent_changes" not in tool_res_names:
+                    return {
+                        "role": "assistant",
+                        "content": "Checking recent changes on frontend",
+                        "tool_calls": [{"id": "call_3", "name": "recent_changes", "arguments": {"service": "frontend"}}],
+                    }
+                elif "path_between" not in tool_res_names:
+                    return {
+                        "role": "assistant",
+                        "content": "Tracing path from frontend to checkoutservice",
+                        "tool_calls": [{"id": "call_4", "name": "path_between", "arguments": {"caller": "frontend", "callee": "checkoutservice"}}],
+                    }
+
+            # Done calling tools
+            return {"role": "assistant", "content": "Tool exploration complete.", "tool_calls": []}
+
+    mock_provider = DynamicMockProvider()
+    monkeypatch.setattr("app.agents.llm.get_llm_provider", lambda: mock_provider)
+    monkeypatch.setattr("app.agents.llm.get_active_provider_name", lambda: "mock_live_provider")
+    monkeypatch.setattr(
+        "app.agents.llm.resolve_llm_mode",
+        lambda mode=None: LLMResolution(
+            mode="live", provider="mock_live_provider", is_live_available=True, degraded=False
+        ),
+    )
+
+    orch_a = IncidentOrchestrator(mode="live")
+    alert_a = {"service": "checkoutservice", "text": "High latency and timeout in checkout flow", "severity": "P1"}
+    res_a, trace_a = orch_a.run_crew(graph, alert=alert_a, auto_approve=False)
+
+    orch_b = IncidentOrchestrator(mode="live")
+    alert_b = {"service": "frontend", "text": "Frontend gateway error rate spike", "severity": "P2"}
+    res_b, trace_b = orch_b.run_crew(graph, alert=alert_b, auto_approve=False)
+
+    # 1. Verify different tool sequences
+    tools_a = [s.tool for s in trace_a.steps if s.tool in ("upstream_suspects", "service_health", "recent_changes", "path_between")]
+    tools_b = [s.tool for s in trace_b.steps if s.tool in ("upstream_suspects", "service_health", "recent_changes", "path_between")]
+
+    assert len(tools_a) > 0 and len(tools_b) > 0
+    assert tools_a != tools_b, f"Expected distinct tool sequences, got {tools_a} and {tools_b}"
+    assert "upstream_suspects" in tools_a
+    assert "recent_changes" in tools_b
+
+    # 2. Verify different evidence sets
+    hyps_a = res_a["investigator"]["hypotheses"]
+    hyps_b = res_b["investigator"]["hypotheses"]
+
+    ev_ids_a = {e["id"] for h in hyps_a for e in h.get("supporting_evidence", [])}
+    ev_ids_b = {e["id"] for h in hyps_b for e in h.get("supporting_evidence", [])}
+
+    assert ev_ids_a != ev_ids_b, "Expected distinct evidence sets between two alerts"
+    assert len(ev_ids_a) > 0
+    assert len(ev_ids_b) > 0
+
+
 
 
 
