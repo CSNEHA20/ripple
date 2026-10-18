@@ -258,6 +258,17 @@ export interface BenchmarkReportResponse {
 
 // API client functions
 export const API_BASE = ((import.meta as any).env?.VITE_BACKEND_URL || '').replace(/\/$/, '');
+export const DEFAULT_API_KEY = (import.meta as any).env?.VITE_API_KEY || 'ripple_admin_api_key_2026';
+
+export function authHeaders(tenant: string = 'storefront', extra: Record<string, string> = {}): Record<string, string> {
+  const token = (typeof localStorage !== 'undefined' ? localStorage.getItem('ripple_api_key') : null) || DEFAULT_API_KEY;
+  return {
+    'X-Tenant': tenant,
+    'Authorization': `Bearer ${token}`,
+    'X-API-Key': token,
+    ...extra,
+  };
+}
 
 export function apiUrl(path: string): string {
   if (path.startsWith('http://') || path.startsWith('https://')) return path;
@@ -265,7 +276,7 @@ export function apiUrl(path: string): string {
 }
 
 export async function getScenarios(tenant: string = 'storefront'): Promise<ScenarioItem[]> {
-  const res = await fetch(apiUrl('/api/scenarios'), { headers: { 'X-Tenant': tenant } });
+  const res = await fetch(apiUrl('/api/scenarios'), { headers: authHeaders(tenant) });
   if (!res.ok) throw new Error('Failed to load scenarios');
   const data = await res.json();
   return data.scenarios || [];
@@ -274,7 +285,7 @@ export async function getScenarios(tenant: string = 'storefront'): Promise<Scena
 export async function loadScenario(scenarioId: string, tenant: string = 'storefront') {
   const res = await fetch(apiUrl(`/api/scenarios/${scenarioId}/load`), {
     method: 'POST',
-    headers: { 'X-Tenant': tenant, 'Content-Type': 'application/json' },
+    headers: authHeaders(tenant, { 'Content-Type': 'application/json' }),
   });
   if (!res.ok) throw new Error(`Failed to load scenario ${scenarioId}`);
   return res.json();
@@ -292,7 +303,7 @@ export async function runIncidentCrew(
 ) {
   const res = await fetch(apiUrl('/api/incidents'), {
     method: 'POST',
-    headers: { 'X-Tenant': tenant, 'Content-Type': 'application/json' },
+    headers: authHeaders(tenant, { 'Content-Type': 'application/json' }),
     body: JSON.stringify(payload),
   });
   if (!res.ok && res.status !== 202) throw new Error('Failed to run incident crew');
@@ -367,7 +378,7 @@ export async function getSystemStatus(): Promise<{
   github_repo: string;
 }> {
   try {
-    const res = await fetch(apiUrl('/api/system/status'));
+    const res = await fetch(apiUrl('/api/system/status'), { headers: authHeaders() });
     if (!res.ok) return { llm_provider: 'none', llm_status: 'degraded', telemetry_source: 'simulator', embeddings_backend: 'hash', github_repo: '' };
     return await res.json();
   } catch {
@@ -376,7 +387,7 @@ export async function getSystemStatus(): Promise<{
 }
 
 export async function getIncident(incidentId: string, tenant: string = 'storefront'): Promise<IncidentStateResponse> {
-  const res = await fetch(apiUrl(`/api/incidents/${incidentId}`), { headers: { 'X-Tenant': tenant } });
+  const res = await fetch(apiUrl(`/api/incidents/${incidentId}`), { headers: authHeaders(tenant) });
   if (!res.ok) throw new Error(`Failed to fetch incident ${incidentId}`);
   return res.json();
 }
@@ -384,7 +395,7 @@ export async function getIncident(incidentId: string, tenant: string = 'storefro
 export async function approveAction(incidentId: string, actionId: string, scenarioId?: string, tenant: string = 'storefront') {
   const res = await fetch(apiUrl(`/api/incidents/${incidentId}/actions/${actionId}/approve`), {
     method: 'POST',
-    headers: { 'X-Tenant': tenant, 'Content-Type': 'application/json' },
+    headers: authHeaders(tenant, { 'Content-Type': 'application/json' }),
     body: JSON.stringify({ scenario_id: scenarioId }),
   });
   if (!res.ok) throw new Error(`Failed to approve action ${actionId}`);
@@ -394,7 +405,7 @@ export async function approveAction(incidentId: string, actionId: string, scenar
 export async function rejectAction(incidentId: string, actionId: string, reason: string = 'Rejected by operator', tenant: string = 'storefront') {
   const res = await fetch(apiUrl(`/api/incidents/${incidentId}/actions/${actionId}/reject`), {
     method: 'POST',
-    headers: { 'X-Tenant': tenant, 'Content-Type': 'application/json' },
+    headers: authHeaders(tenant, { 'Content-Type': 'application/json' }),
     body: JSON.stringify({ reason }),
   });
   if (!res.ok) throw new Error(`Failed to reject action ${actionId}`);
@@ -413,7 +424,7 @@ export async function getGraphSubgraph(params: {
   if (params.radius) q.set('radius', String(params.radius));
   if (params.as_of) q.set('as_of', String(params.as_of));
 
-  const res = await fetch(apiUrl(`/api/graph/subgraph?${q.toString()}`), { headers: { 'X-Tenant': tenant } });
+  const res = await fetch(apiUrl(`/api/graph/subgraph?${q.toString()}`), { headers: authHeaders(tenant) });
   if (!res.ok) throw new Error('Failed to fetch subgraph');
   const json = await res.json();
   return json.data || { nodes: [], edges: [] };
@@ -427,7 +438,7 @@ export async function getCounterfactual(
 ): Promise<CounterfactualResponse> {
   const res = await fetch(apiUrl('/api/counterfactual'), {
     method: 'POST',
-    headers: { 'X-Tenant': tenant, 'Content-Type': 'application/json' },
+    headers: authHeaders(tenant, { 'Content-Type': 'application/json' }),
     body: JSON.stringify({
       observed_incident_id: observedIncidentId,
       hypothetical_service: hypotheticalService,
@@ -443,7 +454,7 @@ export async function getCounterfactual(
 export async function askBrain(question: string, mode: string = 'replay', tenant: string = 'storefront'): Promise<AskBrainResponse> {
   const res = await fetch(apiUrl('/api/ask'), {
     method: 'POST',
-    headers: { 'X-Tenant': tenant, 'Content-Type': 'application/json' },
+    headers: authHeaders(tenant, { 'Content-Type': 'application/json' }),
     body: JSON.stringify({ question, mode }),
   });
   if (!res.ok) throw new Error('Ask-the-Brain query failed');
@@ -452,7 +463,7 @@ export async function askBrain(question: string, mode: string = 'replay', tenant
 }
 
 export async function getInspectStep(stepId: string, tenant: string = 'storefront'): Promise<any> {
-  const res = await fetch(apiUrl(`/api/inspect/${stepId}`), { headers: { 'X-Tenant': tenant } });
+  const res = await fetch(apiUrl(`/api/inspect/${stepId}`), { headers: authHeaders(tenant) });
   if (!res.ok) throw new Error(`Failed to inspect step ${stepId}`);
   const json = await res.json();
   return json.data;
@@ -461,7 +472,7 @@ export async function getInspectStep(stepId: string, tenant: string = 'storefron
 export async function getInspectReplay(trace: any, tenant: string = 'storefront'): Promise<any> {
   const res = await fetch(apiUrl('/api/inspect/replay'), {
     method: 'POST',
-    headers: { 'X-Tenant': tenant, 'Content-Type': 'application/json' },
+    headers: authHeaders(tenant, { 'Content-Type': 'application/json' }),
     body: JSON.stringify({ trace }),
   });
   if (!res.ok) throw new Error('Failed to generate why replay frames');
@@ -469,7 +480,7 @@ export async function getInspectReplay(trace: any, tenant: string = 'storefront'
 }
 
 export async function getBenchmarkReport(): Promise<BenchmarkReportResponse> {
-  const res = await fetch(apiUrl('/api/benchmark/report'));
+  const res = await fetch(apiUrl('/api/benchmark/report'), { headers: authHeaders('storefront') });
   if (!res.ok) throw new Error('Failed to fetch benchmark report');
   return res.json();
 }
@@ -477,7 +488,7 @@ export async function getBenchmarkReport(): Promise<BenchmarkReportResponse> {
 export async function runBenchmark(scenarios?: string[], modes?: string[]): Promise<any> {
   const res = await fetch(apiUrl('/api/benchmark/run'), {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: authHeaders('storefront', { 'Content-Type': 'application/json' }),
     body: JSON.stringify({ scenarios, modes, mode: 'replay' }),
   });
   if (!res.ok) throw new Error('Failed to run benchmark');
@@ -485,27 +496,27 @@ export async function runBenchmark(scenarios?: string[], modes?: string[]): Prom
 }
 
 export async function getMemoryStats(tenant: string = 'storefront'): Promise<any> {
-  const res = await fetch(apiUrl('/api/memory/stats'), { headers: { 'X-Tenant': tenant } });
+  const res = await fetch(apiUrl('/api/memory/stats'), { headers: authHeaders(tenant) });
   if (!res.ok) throw new Error('Failed to fetch memory stats');
   const json = await res.json();
   return json.data;
 }
 
 export async function checkHealth(): Promise<any> {
-  const res = await fetch(apiUrl('/api/health'));
+  const res = await fetch(apiUrl('/api/health'), { headers: authHeaders('storefront') });
   if (!res.ok) throw new Error('Health check failed');
   return res.json();
 }
 
 export async function getAskHistory(tenant: string = 'storefront'): Promise<any[]> {
-  const res = await fetch(apiUrl('/api/ask/history'), { headers: { 'X-Tenant': tenant } });
+  const res = await fetch(apiUrl('/api/ask/history'), { headers: authHeaders(tenant) });
   if (!res.ok) return [];
   const json = await res.json();
   return json.history || [];
 }
 
 export async function getBrainFreshness(tenant: string = 'storefront'): Promise<any> {
-  const res = await fetch(apiUrl('/api/brain/freshness'), { headers: { 'X-Tenant': tenant } });
+  const res = await fetch(apiUrl('/api/brain/freshness'), { headers: authHeaders(tenant) });
   if (!res.ok) return null;
   const json = await res.json();
   return json.data || json;
@@ -513,21 +524,21 @@ export async function getBrainFreshness(tenant: string = 'storefront'): Promise<
 
 export async function getCounterfactualUncertainty(services?: string[], tenant: string = 'storefront'): Promise<any> {
   const q = services && services.length > 0 ? `?services=${services.join(',')}` : '';
-  const res = await fetch(apiUrl(`/api/counterfactual/uncertainty${q}`), { headers: { 'X-Tenant': tenant } });
+  const res = await fetch(apiUrl(`/api/counterfactual/uncertainty${q}`), { headers: authHeaders(tenant) });
   if (!res.ok) return null;
   const json = await res.json();
   return json.data || json;
 }
 
 export async function getMemoryFacts(tenant: string = 'storefront'): Promise<any> {
-  const res = await fetch(apiUrl('/api/memory/facts'), { headers: { 'X-Tenant': tenant } });
+  const res = await fetch(apiUrl('/api/memory/facts'), { headers: authHeaders(tenant) });
   if (!res.ok) return { facts: [] };
   const json = await res.json();
   return json.data || json;
 }
 
 export async function getToolsList(tenant: string = 'storefront'): Promise<any[]> {
-  const res = await fetch(apiUrl('/api/tools'), { headers: { 'X-Tenant': tenant } });
+  const res = await fetch(apiUrl('/api/tools'), { headers: authHeaders(tenant) });
   if (!res.ok) return [];
   const json = await res.json();
   return json.tools || [];
