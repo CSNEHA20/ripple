@@ -1000,6 +1000,427 @@ def test_t4_relative_baseline_comparison_with_floors():
     assert res_zero["observed_outcome"] == "resolved"
 
 
+# ==============================================================================
+# T5: GitHub Ingestion Correctness Tests
+# ==============================================================================
+
+def test_t5_service_inference_precedence_and_whole_word_matching():
+    """T5 Acceptance Test:
+    - Precedence: Changed files takes precedence over text hints.
+    - Whole-word matching: 'add loading spinner' does NOT map to 'adservice'.
+    - 'ad banner fix' maps to 'adservice'.
+    - Unmapped rather than guessing when nothing matches.
+    """
+    from app.ingest.github import infer_service_for_pr, infer_service_from_path, _infer_service_from_text
+
+    # 1. Acceptance Criteria: a PR touching src/paymentservice/ maps to paymentservice
+    assert infer_service_from_path("src/paymentservice/main.go") == "paymentservice"
+    assert infer_service_for_pr(
+        title="update frontend ads",
+        body="misleading keywords",
+        changed_files=["src/paymentservice/charge.go"],
+    ) == "paymentservice"
+
+    # 2. Acceptance Criteria: PR titled 'add loading spinner' does NOT map to adservice
+    # Must map to 'unmapped'
+    assert _infer_service_from_text("add loading spinner", default="unmapped") == "unmapped"
+    assert infer_service_for_pr(
+        title="add loading spinner",
+        body="improved page load speed",
+        changed_files=[],
+    ) == "unmapped"
+
+    # Words containing 'ad' as a substring must NOT match adservice
+    for false_positive in [
+        "add items to cart",
+        "loading spinner animation",
+        "reading configuration file",
+        "thread safety fix",
+        "deadlock resolution",
+        "broadcast notification",
+        "gradual rollout",
+    ]:
+        res = infer_service_for_pr(title=false_positive, body="", changed_files=[])
+        assert res != "adservice", f"False positive match on adservice for: '{false_positive}'"
+
+    # 3. Whole-word 'ad' or 'ads' or 'advertisement' correctly matches adservice
+    assert infer_service_for_pr(title="ad banner fix", body="", changed_files=[]) == "adservice"
+    assert infer_service_for_pr(title="Ad unit layout update", body="", changed_files=[]) == "adservice"
+    assert infer_service_for_pr(title="Update targeting for ads", body="", changed_files=[]) == "adservice"
+    assert infer_service_for_pr(title="New advertisement provider", body="", changed_files=[]) == "adservice"
+
+    # 4. Unknown/unmatched files and text map to 'unmapped'
+    assert infer_service_for_pr(
+        title="Misc documentation typo",
+        body="Fixed spelling in readme",
+        changed_files=["docs/README.md"],
+    ) == "unmapped"
+
+
+def test_t5_per_tenant_path_and_keyword_configuration():
+    """T5: Path-to-service table and keyword hints are configurable per tenant, not hard-coded."""
+    from app.tenant_settings import get_tenant_settings, update_tenant_settings
+    from app.ingest.github import infer_service_for_pr
+    from unittest.mock import MagicMock
+
+    tenant_id = "tenant_custom_fintech"
+    custom_path_map = {
+        "services/ledger/": "ledger-svc",
+        "services/auth/": "auth-svc",
+    }
+    custom_kw_hints = {
+        "ledger-svc": ["accounting", "ledger", "balance"],
+        "auth-svc": ["oauth", "sso", "jwt"],
+    }
+
+    mock_graph = MagicMock()
+    mock_graph.query.return_value = None
+
+    update_tenant_settings(
+        tenant_id=tenant_id,
+        updates={
+            "path_to_service": custom_path_map,
+            "keyword_hints": custom_kw_hints,
+        },
+        graph=mock_graph,
+    )
+
+    # Verify settings reloaded per-tenant
+    cfg = get_tenant_settings(tenant_id=tenant_id)
+    assert cfg["path_to_service"] == custom_path_map
+    assert cfg["keyword_hints"] == custom_kw_hints
+
+    # Verify graph query was issued with JSON serialized configs
+    query_calls = [str(call) for call in mock_graph.query.call_args_list]
+    assert any("ts.path_to_service_json = $p_json" in q for q in query_calls)
+    assert any("ts.keyword_hints_json = $kw_json" in q for q in query_calls)
+
+    # Ingestion inference uses tenant's custom tables
+    res_path = infer_service_for_pr(
+        title="general commit",
+        changed_files=["services/ledger/entry.py"],
+        path_to_service=cfg["path_to_service"],
+        keyword_hints=cfg["keyword_hints"],
+    )
+    assert res_path == "ledger-svc"
+
+    res_kw = infer_service_for_pr(
+        title="Fix jwt token expiration",
+        changed_files=[],
+        path_to_service=cfg["path_to_service"],
+        keyword_hints=cfg["keyword_hints"],
+    )
+    assert res_kw == "auth-svc"
+
+    # Default microservices paths are unmapped for this custom tenant
+    res_default_path = infer_service_for_pr(
+        title="update something",
+        changed_files=["src/paymentservice/main.go"],
+        path_to_service=cfg["path_to_service"],
+        keyword_hints=cfg["keyword_hints"],
+    )
+    assert res_default_path == "unmapped"
+
+
+def test_t5_link_header_pagination_and_counts():
+    """T5: Follow Link header pagination across pages and match total item counts."""
+    import httpx
+    from unittest.mock import MagicMock
+    from app.ingest.github import parse_next_link, fetch_paginated_resource
+
+    # 1. parse_next_link RFC 5988 parsing
+    sample_header = (
+        '<https://api.github.com/repositories/123/pulls?page=2>; rel="next", '
+        '<https://api.github.com/repositories/123/pulls?page=5>; rel="last"'
+    )
+    assert parse_next_link(sample_header) == "https://api.github.com/repositories/123/pulls?page=2"
+    assert parse_next_link('<https://api.github.com/repositories/123/pulls?page=1>; rel="prev"') is None
+    assert parse_next_link(None) is None
+
+    # 2. fetch_paginated_resource paginates across multiple pages
+    mock_client = MagicMock(spec=httpx.Client)
+
+    page1_resp = MagicMock()
+    page1_resp.status_code = 200
+    page1_resp.json.return_value = [{"number": 1, "title": "PR 1"}, {"number": 2, "title": "PR 2"}]
+    page1_resp.headers = {
+        "Link": '<https://api.github.com/repos/org/repo/pulls?page=2>; rel="next"',
+        "ETag": 'W/"page1-etag"',
+    }
+
+    page2_resp = MagicMock()
+    page2_resp.status_code = 200
+    page2_resp.json.return_value = [{"number": 3, "title": "PR 3"}]
+    page2_resp.headers = {
+        "Link": '<https://api.github.com/repos/org/repo/pulls?page=1>; rel="prev"',
+        "ETag": 'W/"page2-etag"',
+    }
+
+    def client_get_side_effect(url, headers=None):
+        if "page=2" in url:
+            return page2_resp
+        return page1_resp
+
+    mock_client.get.side_effect = client_get_side_effect
+
+    items, limits_hit, err = fetch_paginated_resource(
+        client=mock_client,
+        initial_url="https://api.github.com/repos/org/repo/pulls?page=1",
+        headers={"Authorization": "Bearer token"},
+        max_pages=5,
+        etag_cache={},
+        response_cache={},
+    )
+
+    # All items across pages 1 and 2 are returned
+    assert len(items) == 3
+    assert [it["number"] for it in items] == [1, 2, 3]
+    assert limits_hit is False
+    assert err is None
+    assert mock_client.get.call_count == 2
+
+
+def test_t5_etag_caching_and_rate_limit_handling():
+    """T5: Support ETags with 304 caching and handle 403/429 rate limits gracefully."""
+    import httpx
+    from unittest.mock import MagicMock
+    from app.ingest.github import fetch_paginated_resource
+
+    # 1. 304 Not Modified ETag caching
+    mock_client = MagicMock(spec=httpx.Client)
+    resp_304 = MagicMock()
+    resp_304.status_code = 304
+    mock_client.get.return_value = resp_304
+
+    cached_url = "https://api.github.com/repos/org/repo/contributors"
+    etag_cache = {cached_url: 'W/"etag-abc"'}
+    response_cache = {cached_url: [{"login": "dev1"}, {"login": "dev2"}]}
+
+    items, limits_hit, err = fetch_paginated_resource(
+        client=mock_client,
+        initial_url=cached_url,
+        headers={},
+        etag_cache=etag_cache,
+        response_cache=response_cache,
+    )
+    assert len(items) == 2
+    assert items[0]["login"] == "dev1"
+    assert limits_hit is False
+
+    # Check that If-None-Match header was sent
+    sent_headers = mock_client.get.call_args[1]["headers"]
+    assert sent_headers.get("If-None-Match") == 'W/"etag-abc"'
+
+    # 2. 429 Rate Limit Handling
+    resp_429 = MagicMock()
+    resp_429.status_code = 429
+    resp_429.headers = {"retry-after": "60", "x-ratelimit-remaining": "0"}
+    resp_429.text = "API rate limit exceeded"
+    mock_client.get.return_value = resp_429
+
+    items_rl, limits_hit_rl, err_rl = fetch_paginated_resource(
+        client=mock_client,
+        initial_url="https://api.github.com/repos/org/repo/issues",
+        headers={},
+        etag_cache={},
+        response_cache={},
+    )
+    assert limits_hit_rl is True
+    assert "rate limit" in (err_rl or "").lower()
+
+
+def test_t5_pr_file_caching_and_request_capping(tmp_path, monkeypatch):
+    """T5: Cache PR file lists to avoid duplicate requests; cap and report limits."""
+    import httpx
+    from unittest.mock import MagicMock
+    import app.ingest.github as gh_module
+
+    # Use a temp cache path for the test
+    test_cache_file = str(tmp_path / "test_pr_cache.json")
+    monkeypatch.setattr(gh_module, "_PR_CACHE_PATH", test_cache_file)
+    monkeypatch.setattr(gh_module, "_PR_FILES_CACHE", {})
+
+    mock_client = MagicMock(spec=httpx.Client)
+    resp = MagicMock()
+    resp.status_code = 200
+    resp.json.return_value = [{"filename": "src/paymentservice/main.go"}]
+    mock_client.get.return_value = resp
+
+    # First call: makes HTTP request and increments count
+    files1, reqs1, lim1 = gh_module.fetch_pr_changed_files(
+        client=mock_client,
+        base_url="https://api.github.com/repos/org/repo",
+        repo="org/repo",
+        pr_num=201,
+        headers={},
+        requests_made=0,
+        max_requests=50,
+    )
+    assert files1 == ["src/paymentservice/main.go"]
+    assert reqs1 == 1
+    assert lim1 is False
+    assert mock_client.get.call_count == 1
+
+    # Second call for SAME PR: served from cache, no HTTP request made!
+    files2, reqs2, lim2 = gh_module.fetch_pr_changed_files(
+        client=mock_client,
+        base_url="https://api.github.com/repos/org/repo",
+        repo="org/repo",
+        pr_num=201,
+        headers={},
+        requests_made=1,
+        max_requests=50,
+    )
+    assert files2 == ["src/paymentservice/main.go"]
+    assert reqs2 == 1  # Not incremented!
+    assert lim2 is False
+    assert mock_client.get.call_count == 1  # Still 1!
+
+    # Third call: capped when requests_made >= max_requests
+    files3, reqs3, lim3 = gh_module.fetch_pr_changed_files(
+        client=mock_client,
+        base_url="https://api.github.com/repos/org/repo",
+        repo="org/repo",
+        pr_num=999,  # Uncached PR
+        headers={},
+        requests_made=50,
+        max_requests=50,
+    )
+    assert files3 == []
+    assert reqs3 == 50
+    assert lim3 is True
+
+
+def test_t5_merged_at_preservation_and_deployments(monkeypatch):
+    """T5: Do not fall back to 'now' for merged_at; skip deployment if merged_at is missing;
+    tag all nodes with source='real' and last_synced_at.
+    """
+    from unittest.mock import MagicMock
+    from app.ingest.github import _parse_iso_ts, load_github_data
+    import app.ingest.github as gh_module
+
+    # 1. _parse_iso_ts preserves None and does NOT return time.time()
+    assert _parse_iso_ts(None) is None
+    assert _parse_iso_ts("") is None
+    assert _parse_iso_ts("invalid-iso-string") is None
+    valid_ts = _parse_iso_ts("2026-10-15T12:00:00Z")
+    assert valid_ts is not None and valid_ts > 1700000000.0
+
+    # 2. In load_github_data, unmerged PR (merged_at=None) does NOT create Deployment
+    mock_data = {
+        "status": "success",
+        "source": "real",
+        "contributors": [{"login": "alice", "name": "Alice"}],
+        "service_commits": [{"login": "alice", "service": "paymentservice", "n": 5, "last_ts": 1770000000.0, "is_owner": True}],
+        "pull_requests": [
+            {
+                "number": 101,
+                "title": "unmerged feature PR",
+                "service": "paymentservice",
+                "author": "alice",
+                "merged_at": None,
+                "is_merged": False,
+                "url": "https://github.com/org/repo/pull/101",
+            },
+            {
+                "number": 102,
+                "title": "merged bugfix PR",
+                "service": "paymentservice",
+                "author": "alice",
+                "merged_at": 1775000000.0,
+                "is_merged": True,
+                "url": "https://github.com/org/repo/pull/102",
+            },
+        ],
+        "issues": [
+            {
+                "number": 501,
+                "title": "paymentservice latency spike",
+                "service": "paymentservice",
+                "author": "alice",
+                "state": "open",
+                "url": "https://github.com/org/repo/issues/501",
+            }
+        ],
+        "deployments": [],
+        "last_synced_at": 1776000000.0,
+    }
+
+    mock_graph = MagicMock()
+    mock_graph.tenant_id = "test_t5_tenant"
+    mock_graph.graph_name = "test_t5_graph"
+
+    # Capture queries and params
+    recorded_calls = []
+    def record_query(q, params=None):
+        recorded_calls.append((q, params or {}))
+        return None
+    mock_graph.query.side_effect = record_query
+
+    monkeypatch.setattr(gh_module, "fetch_or_load_github_data", lambda tenant_id=None: mock_data)
+
+    result = load_github_data(mock_graph)
+    assert result["status"] == "success"
+    assert result["source"] == "real"
+    assert result["pull_requests"] == 2
+    assert result["deployments"] == 1  # ONLY PR #102 was deployed, NOT PR #101!
+
+    # Inspect query params for PR #101 vs PR #102
+    pr_calls = [p for (q, p) in recorded_calls if "PullRequest" in q and p.get("number") in (101, 102)]
+    pr101 = next(p for p in pr_calls if p["number"] == 101)
+    pr102 = next(p for p in pr_calls if p["number"] == 102)
+
+    assert pr101["merged_at"] is None
+    assert pr101["is_merged"] is False
+    assert pr101["source"] == "real"
+    assert pr101["last_synced"] == 1776000000.0
+
+    assert pr102["merged_at"] == 1775000000.0
+    assert pr102["is_merged"] is True
+
+    # Deployment call only exists for PR 102
+    dep_calls = [p for (q, p) in recorded_calls if "Deployment" in q]
+    assert len(dep_calls) == 1
+    assert dep_calls[0]["number"] == 102
+    assert dep_calls[0]["deploy_id"] == "dep_pr_102"
+    assert dep_calls[0]["source"] == "real"
+
+
+def test_t5_failed_fetch_reporting(monkeypatch):
+    """T5: Report clearly with status='error' when GitHub API fetch fails."""
+    from app.ingest.github import fetch_real_github_api, load_github_data
+    from unittest.mock import MagicMock
+    import app.ingest.github as gh_module
+
+    # 1. Missing token or repo returns structured error
+    err_res = fetch_real_github_api(repo="", token="")
+    assert err_res["status"] == "error"
+    assert err_res["source"] == "error"
+    assert "Missing GitHub repository or token" in err_res["error"]
+
+    # 2. When live fetch fails, load_github_data returns status='error' without raising
+    mock_graph = MagicMock()
+    mock_graph.tenant_id = "failing_tenant"
+
+    monkeypatch.setattr(
+        gh_module,
+        "fetch_or_load_github_data",
+        lambda tenant_id=None: {
+            "status": "error",
+            "source": "error",
+            "error": "HTTP 401: Bad credentials",
+            "last_synced_at": 1776000000.0,
+        },
+    )
+
+    result = load_github_data(mock_graph)
+    assert result["status"] == "error"
+    assert result["source"] == "error"
+    assert "Bad credentials" in result["error"]
+    assert result["pull_requests"] == 0
+
+
+
 
 
 
