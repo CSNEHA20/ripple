@@ -426,3 +426,117 @@ def test_per_tenant_telemetry_adapter_resolution():
     assert isinstance(adapter_demo, DemoTargetAdapter)
 
 
+def test_webhook_bearer_token_verification():
+    payload = b'{"alerts":[{"labels":{"service":"paymentservice"}}]}'
+    token = "test-token-bearer-xyz"
+
+    # 1. Valid Authorization: Bearer <token>
+    assert verify_webhook_signature(payload, auth_header=f"Bearer {token}", token=token) is True
+
+    # 2. Case-insensitive 'bearer' prefix
+    assert verify_webhook_signature(payload, auth_header=f"bearer {token}", token=token) is True
+
+    # 3. Direct raw token in auth_header
+    assert verify_webhook_signature(payload, auth_header=token, token=token) is True
+
+    # 4. Invalid bearer token rejected
+    assert verify_webhook_signature(payload, auth_header="Bearer wrong_token", token=token) is False
+
+    # 5. Missing auth header when token configured rejected
+    assert verify_webhook_signature(payload, auth_header=None, token=token) is False
+
+
+def test_alertmanager_webhook_endpoint_security_modes(monkeypatch):
+    import json
+    from fastapi.testclient import TestClient
+    from app.main import app
+
+    client = TestClient(app)
+    test_token = "alertmanager_token_12345"
+    test_secret = "hmac_secret_67890"
+
+    alert_payload = {
+        "receiver": "ripple-webhook",
+        "status": "firing",
+        "alerts": [
+            {
+                "status": "firing",
+                "labels": {
+                    "alertname": "ServiceHighLatency",
+                    "service": "paymentservice",
+                    "severity": "critical",
+                },
+                "annotations": {
+                    "summary": "High p95 latency on paymentservice",
+                    "description": "p95 latency exceeding 1000ms",
+                },
+                "fingerprint": f"fp_{time.time()}_{hash('test')}",
+            }
+        ],
+    }
+
+    # Set webhook_token and webhook_secret
+    monkeypatch.setattr(settings, "webhook_token", test_token)
+    monkeypatch.setattr(settings, "webhook_secret", test_secret)
+
+    # 1. Missing credentials returns 401
+    resp_no_auth = client.post("/webhooks/alert", json=alert_payload)
+    assert resp_no_auth.status_code == 401
+
+    # 2. Wrong token returns 401
+    resp_bad_token = client.post(
+        "/webhooks/alert",
+        json=alert_payload,
+        headers={"Authorization": "Bearer bad_token"},
+    )
+    assert resp_bad_token.status_code == 401
+
+    # 3. Valid Bearer token from Alertmanager accepted and opens incident (200 or 202)
+    resp_valid_token = client.post(
+        "/webhooks/alert",
+        json=alert_payload,
+        headers={"Authorization": f"Bearer {test_token}"},
+    )
+    assert resp_valid_token.status_code in (200, 202)
+    data = resp_valid_token.json()
+    assert data["status"] in ("accepted", "created", "deduplicated")
+
+    # 4. Valid HMAC signature in X-Ripple-Signature accepted
+    import hmac, hashlib
+    payload_bytes = json.dumps(alert_payload).encode("utf-8")
+    valid_hmac = "sha256=" + hmac.new(test_secret.encode("utf-8"), payload_bytes, hashlib.sha256).hexdigest()
+
+    resp_valid_hmac = client.post(
+        "/webhooks/alert",
+        content=payload_bytes,
+        headers={"X-Ripple-Signature": valid_hmac, "Content-Type": "application/json"},
+    )
+    assert resp_valid_hmac.status_code in (200, 202)
+
+    # 5. Invalid HMAC signature rejected with 401
+    resp_bad_hmac = client.post(
+        "/webhooks/alert",
+        content=payload_bytes,
+        headers={"X-Ripple-Signature": "sha256=invalid", "Content-Type": "application/json"},
+    )
+    assert resp_bad_hmac.status_code == 401
+
+
+def test_webhook_production_startup_fail_closed(monkeypatch):
+    from app.main import validate_security_configuration
+
+    monkeypatch.setattr(settings, "environment", "production")
+    monkeypatch.setattr(settings, "webhook_secret", None)
+    monkeypatch.setattr(settings, "webhook_token", None)
+
+    # Refuse to start without secret or token in production
+    with pytest.raises(RuntimeError) as exc_info:
+        validate_security_configuration()
+    assert "webhook_secret or webhook_token must be configured" in str(exc_info.value)
+
+    # Allowed with token configured
+    monkeypatch.setattr(settings, "webhook_token", "prod_token_abc")
+    validate_security_configuration()  # Should not raise
+
+
+

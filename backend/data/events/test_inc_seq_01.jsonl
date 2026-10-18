@@ -52,3 +52,6 @@
 {"id": "test_inc_seq_01_1", "seq": 1, "incident_id": "test_inc_seq_01", "event": "incident_opened", "data": {"service": "checkout"}, "ts": 1792273256.542758}
 {"id": "test_inc_seq_01_2", "seq": 2, "incident_id": "test_inc_seq_01", "event": "agent_started", "data": {"agent": "triage"}, "ts": 1792273256.5429785}
 {"id": "test_inc_seq_01_3", "seq": 3, "incident_id": "test_inc_seq_01", "event": "tool_called", "data": {"tool": "blast_radius"}, "ts": 1792273256.5431924}
+{"id": "test_inc_seq_01_1", "seq": 1, "incident_id": "test_inc_seq_01", "event": "incident_opened", "data": {"service": "checkout"}, "ts": 1792296014.0906777}
+{"id": "test_inc_seq_01_2", "seq": 2, "incident_id": "test_inc_seq_01", "event": "agent_started", "data": {"agent": "triage"}, "ts": 1792296014.0909016}
+{"id": "test_inc_seq_01_3", "seq": 3, "incident_id": "test_inc_seq_01", "event": "tool_called", "data": {"tool": "blast_radius"}, "ts": 1792296014.0911186}

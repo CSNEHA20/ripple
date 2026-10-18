@@ -32,6 +32,7 @@ services:
       - FALKORDB_HOST=falkordb
       - FALKORDB_PORT=6379
       - ENVIRONMENT=development
+      - WEBHOOK_TOKEN=${WEBHOOK_TOKEN:-ripple_alertmanager_token_secret}
     depends_on:
       falkordb:
         condition: service_healthy
@@ -71,6 +72,8 @@ services:
     container_name: ripple-alertmanager
     ports:
       - "9093:9093"
+    environment:
+      - WEBHOOK_TOKEN=${WEBHOOK_TOKEN:-ripple_alertmanager_token_secret}
     volumes:
       - ./deploy/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
     command:
