@@ -1,7 +1,7 @@
 {
   "intent": "ownership",
-  "summary_answer": "Formal owner for paymentservice: Ian Lewis (ianlewis). Top active maintainers by commit recency: ianlewis (48 commits, recency 14.26), the-red-eye (22 commits, recency 4.0), priya-s (15 commits, recency 2.28) [paymentservice]. (Citations: [paymentservice], [ianlewis])",
-  "detailed_answer": "Formal owner for paymentservice: Ian Lewis (ianlewis). Top active maintainers by commit recency: ianlewis (48 commits, recency 14.26), the-red-eye (22 commits, recency 4.0), priya-s (15 commits, recency 2.28) [paymentservice].",
+  "summary_answer": "Formal owner for paymentservice: Ian Lewis (ianlewis). Top active maintainers by commit recency: ianlewis (48 commits, recency 13.98), the-red-eye (22 commits, recency 3.92), priya-s (15 commits, recency 2.24) [paymentservice]. (Citations: [paymentservice], [ianlewis])",
+  "detailed_answer": "Formal owner for paymentservice: Ian Lewis (ianlewis). Top active maintainers by commit recency: ianlewis (48 commits, recency 13.98), the-red-eye (22 commits, recency 3.92), priya-s (15 commits, recency 2.24) [paymentservice].",
   "cited_node_ids": [
     "paymentservice",
     "ianlewis",
@@ -9,5 +9,8 @@
     "the-red-eye"
   ],
   "is_superseded": false,
-  "is_stale": false
+  "is_stale": false,
+  "source": "replay",
+  "provider": "nvidia",
+  "cached_at": 1792339300.6147683
 }

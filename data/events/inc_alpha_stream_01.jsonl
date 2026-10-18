@@ -10,3 +10,6 @@
 {"id": "inc_alpha_stream_01_1", "seq": 1, "incident_id": "inc_alpha_stream_01", "event": "incident_opened", "data": {"incident_id": "inc_alpha_stream_01", "tenant_id": "tenant_alpha"}, "ts": 1792328320.4629}
 {"id": "inc_alpha_stream_01_2", "seq": 2, "incident_id": "inc_alpha_stream_01", "event": "agent_started", "data": {"agent": "Triage"}, "ts": 1792328320.4639316}
 {"id": "inc_alpha_stream_01_3", "seq": 3, "incident_id": "inc_alpha_stream_01", "event": "incident_closed", "data": {"incident_id": "inc_alpha_stream_01"}, "ts": 1792328320.4644535}
+{"id": "inc_alpha_stream_01_1", "seq": 1, "incident_id": "inc_alpha_stream_01", "event": "incident_opened", "data": {"incident_id": "inc_alpha_stream_01", "tenant_id": "tenant_alpha"}, "ts": 1792330330.8464265}
+{"id": "inc_alpha_stream_01_2", "seq": 2, "incident_id": "inc_alpha_stream_01", "event": "agent_started", "data": {"agent": "Triage"}, "ts": 1792330330.8489296}
+{"id": "inc_alpha_stream_01_3", "seq": 3, "incident_id": "inc_alpha_stream_01", "event": "incident_closed", "data": {"incident_id": "inc_alpha_stream_01"}, "ts": 1792330330.8507564}

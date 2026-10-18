@@ -10,3 +10,6 @@
 {"id": "inc_beta_stream_02_1", "seq": 1, "incident_id": "inc_beta_stream_02", "event": "incident_opened", "data": {"incident_id": "inc_beta_stream_02", "tenant_id": "tenant_beta"}, "ts": 1792328320.4675875}
 {"id": "inc_beta_stream_02_2", "seq": 2, "incident_id": "inc_beta_stream_02", "event": "agent_started", "data": {"agent": "Triage"}, "ts": 1792328320.468629}
 {"id": "inc_beta_stream_02_3", "seq": 3, "incident_id": "inc_beta_stream_02", "event": "incident_closed", "data": {"incident_id": "inc_beta_stream_02"}, "ts": 1792328320.468629}
+{"id": "inc_beta_stream_02_1", "seq": 1, "incident_id": "inc_beta_stream_02", "event": "incident_opened", "data": {"incident_id": "inc_beta_stream_02", "tenant_id": "tenant_beta"}, "ts": 1792330330.8582017}
+{"id": "inc_beta_stream_02_2", "seq": 2, "incident_id": "inc_beta_stream_02", "event": "agent_started", "data": {"agent": "Triage"}, "ts": 1792330330.8600376}
+{"id": "inc_beta_stream_02_3", "seq": 3, "incident_id": "inc_beta_stream_02", "event": "incident_closed", "data": {"incident_id": "inc_beta_stream_02"}, "ts": 1792330330.8621104}
