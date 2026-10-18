@@ -7,22 +7,120 @@ Ripple is an on-call agent crew that uses **FalkorDB** as its brain. It follows 
 
 ---
 
-## ⚡ Quick Start (Setup in 3 commands)
+## ⚡ Quick Start & Real-Time Run Guide
+
+You can run Ripple either using **Docker Compose** (all-in-one) or by running the services individually for local development.
+
+### Option A: All-in-One via Docker Compose
 
 ```bash
 # 1. Clone repository & navigate to root
 git clone https://github.com/Vishallakshmikanthan/ripple.git
 cd ripple
 
-# 2. Start all services via Docker Compose
+# 2. Configure environment file
+cp .env.example .env
+# Edit .env with your keys (see Credentials Guide below)
+
+# 3. Start all services via Docker Compose
 docker compose up -d --build
 
-# 3. Open applications
+# 4. Open applications
 # Web UI:            http://localhost:5173
 # FalkorDB Browser:  http://localhost:3000
 # FastAPI Docs:      http://localhost:8000/docs
-# Health Check:      http://localhost:8000/health
+# Health Check:      http://localhost:8000/api/health
 ```
+
+---
+
+### Option B: Step-by-Step Local Run
+
+If developing locally without running everything inside containers:
+
+#### Step 1: Start FalkorDB
+```bash
+docker run -d --name ripple-falkordb -p 6379:6379 -p 3000:3000 falkordb/falkordb:latest
+```
+*Port `6379` serves the FalkorDB graph engine; port `3000` serves the FalkorDB web visualizer.*
+
+#### Step 2: Start the FastAPI Backend
+```bash
+# In project root:
+uv run --directory backend uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+```
+*The backend automatically bootstraps the tenant schemas in FalkorDB and starts the background traffic simulator.*
+
+#### Step 3: Start the Vite Frontend
+```bash
+cd frontend
+npm install
+npm run dev
+```
+*Frontend runs on `http://localhost:5173` with real-time SSE streaming connected to `http://localhost:8000`.*
+
+#### Step 4: Verify System Health
+```bash
+curl http://localhost:8000/api/health
+# Expected: {"status":"ok","falkordb":"connected",...}
+```
+
+---
+
+## 🔑 How to Get & Configure Required Credentials
+
+Add these values to your `.env` file or enter them in the **Integrations** tab in the UI:
+
+### 1. Webhook Authentication Secret (`WEBHOOK_SECRET` & `WEBHOOK_TOKEN`)
+- **What it is:** A shared secret string you define to authenticate incoming alert webhooks from GitHub, Alertmanager, or custom monitoring.
+- **How to generate it:** Run one of the commands below in your terminal:
+  ```bash
+  # Using Python:
+  python -c "import secrets; print(secrets.token_hex(24))"
+  # Or using OpenSSL:
+  openssl rand -hex 24
+  ```
+- **How to use it:**
+  - Put this value into `WEBHOOK_SECRET` in `.env`.
+  - For **GitHub webhooks**: In your repository (`Settings -> Webhooks -> Add webhook`), paste this secret in the **Secret** field. GitHub will sign all payloads with `X-Hub-Signature-256`.
+  - For **Alertmanager**: Ripple also provides `WEBHOOK_TOKEN=ripple_alertmanager_token_secret`. Alertmanager sends this as an HTTP `Authorization: Bearer <token>` header configured in `deploy/alertmanager/alertmanager.yml`.
+
+### 2. Slack Webhook URL (`SLACK_WEBHOOK_URL`)
+- **What it is:** An incoming webhook URL from your Slack workspace for automated incident notifications and responder action alerts.
+- **How to get it:**
+  1. Open [Slack API: Your Apps](https://api.slack.com/apps) and click **Create New App** (From scratch) or select an existing app.
+  2. In the left sidebar, click **Incoming Webhooks**.
+  3. Turn the switch **Activate Incoming Webhooks** to **On**.
+  4. Scroll down and click **Add New Webhook to Workspace**.
+  5. Select the channel where you want alerts posted (e.g., `#incidents` or `#alerts`) and click **Allow**.
+  6. Copy the generated URL (it looks like `https://hooks.slack.com/services/T00/B00/XXXXX`).
+  7. Paste it into `SLACK_WEBHOOK_URL` in `.env`.
+
+### 3. Prometheus URL (`PROMETHEUS_URL`)
+- **What it is:** The endpoint URL of your Prometheus metrics server for live telemetry queries.
+- **How to get it:**
+  - **Using bundled Docker Prometheus:** Run `docker compose up -d prometheus` (or start `prom/prometheus:latest`). The URL is `http://localhost:9090` (or `http://prometheus:9090` inside Docker).
+  - **Using your existing Prometheus server:** Enter your server address, e.g., `http://192.168.1.100:9090` or `https://prometheus.yourdomain.com`.
+  - **Running without Prometheus (Default):** If left blank or set to `simulator`, Ripple automatically runs its built-in traffic simulator and demo target exporter (`http://localhost:8000/metrics`) with zero external infrastructure needed.
+
+### 4. GitHub Token & Monitored Repo (`GITHUB_TOKEN` & `GITHUB_REPO`)
+- **Monitored Repository:** `GITHUB_REPO=Vishallakshmikanthan/ripple-demo-repo`
+- **How to get a Token:**
+  1. Go to [GitHub Settings -> Personal Access Tokens (Classic)](https://github.com/settings/tokens).
+  2. Click **Generate new token (classic)**.
+  3. Give it a descriptive name (e.g., `Ripple-OnCall-Token`).
+  4. Select scopes:
+     - `repo` (Full control of private repositories / access commit history, PRs, and manifests).
+     - `workflow` (Required if using GitHub Actions workflow dispatch rollback actions).
+  5. Click **Generate token**, copy the `ghp_...` token, and set `GITHUB_TOKEN=ghp_...` in `.env`.
+
+### 5. LLM Provider API Keys (One required for live agent crew)
+Set at least one of the following in `.env`:
+- **NVIDIA NIM / Nemotron:** `NVIDIA_API_KEY=nvapi-...`
+- **Google Gemini:** `GEMINI_API_KEY=AIzaSy...`
+- **OpenAI:** `OPENAI_API_KEY=sk-...`
+- **Anthropic:** `ANTHROPIC_API_KEY=sk-ant-...`
+*(If no LLM key is configured, Ripple runs in deterministic offline replay mode with full provenance and graph traversal intact).*
 
 ---
 
