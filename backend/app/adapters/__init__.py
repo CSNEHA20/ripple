@@ -7,7 +7,13 @@ from app.adapters.base import (
 )
 from app.adapters.prometheus import PrometheusAdapter, PrometheusConnectionError
 from app.adapters.deployments import DeploymentAdapter
-from app.adapters.topology import discover_topology_from_environment, apply_discovered_topology
+from app.adapters.topology import (
+    discover_topology_from_environment,
+    apply_discovered_topology,
+    parse_manifest_content,
+    fetch_topology_from_monitored_repo,
+    ingest_opentelemetry_traces,
+)
 from app.adapters.demo_target import (
     break_service,
     restore_service,
@@ -37,6 +43,9 @@ __all__ = [
     "DeploymentAdapter",
     "discover_topology_from_environment",
     "apply_discovered_topology",
+    "parse_manifest_content",
+    "fetch_topology_from_monitored_repo",
+    "ingest_opentelemetry_traces",
     "break_service",
     "restore_service",
     "get_demo_target_state",

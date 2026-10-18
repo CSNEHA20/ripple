@@ -5,12 +5,14 @@ from app.actions.executors.base import ActionExecutor, ExecutionReceipt
 from app.actions.executors.slack import SlackActionExecutor
 from app.actions.executors.github_dispatch import GitHubDispatchExecutor
 from app.actions.executors.sandbox import SandboxActionExecutor
+from app.actions.executors.kubernetes import KubernetesRolloutExecutor
 
 logger = logging.getLogger("ripple.actions.executors")
 
 _DEFAULT_SANDBOX = SandboxActionExecutor()
 _DEFAULT_SLACK = SlackActionExecutor()
 _DEFAULT_GITHUB = GitHubDispatchExecutor()
+_DEFAULT_K8S = KubernetesRolloutExecutor()
 
 
 def get_executor_for_action(action_kind: str) -> ActionExecutor:
@@ -20,6 +22,8 @@ def get_executor_for_action(action_kind: str) -> ActionExecutor:
         return SlackActionExecutor()
     elif clean in ("github_rollback", "workflow_dispatch"):
         return GitHubDispatchExecutor()
+    elif clean in ("k8s_rollback", "kubernetes_rollout_undo", "rollout_undo", "kubectl_undo", "k8s_rollout_undo"):
+        return KubernetesRolloutExecutor()
     return _DEFAULT_SANDBOX
 
 
@@ -63,7 +67,18 @@ def execute_action(
 
 def clean_action_is_destructive(kind: str) -> bool:
     clean = kind.lower().strip().replace(" ", "_")
-    return clean in ("rollback", "restart", "rollback_deployment", "restart_service", "apply_hotfix")
+    return clean in (
+        "rollback",
+        "restart",
+        "rollback_deployment",
+        "restart_service",
+        "apply_hotfix",
+        "k8s_rollback",
+        "kubernetes_rollout_undo",
+        "rollout_undo",
+        "kubectl_undo",
+        "k8s_rollout_undo",
+    )
 
 
 __all__ = [
@@ -72,6 +87,8 @@ __all__ = [
     "SlackActionExecutor",
     "GitHubDispatchExecutor",
     "SandboxActionExecutor",
+    "KubernetesRolloutExecutor",
     "get_executor_for_action",
     "execute_action",
 ]
+

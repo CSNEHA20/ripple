@@ -163,14 +163,17 @@ def get_tenant_settings(
         "telemetry_source": effective_source,
         "dry_run_default": stored.get("dry_run_default", False),
         "verification_window_seconds": stored.get("verification_window_seconds", settings.verification_window_seconds),
-        "verification_poll_step_seconds": stored.get("verification_poll_step_seconds", settings.verification_poll_step_seconds),
         "path_to_service": stored.get("path_to_service") or dict(DEFAULT_PATH_TO_SERVICE),
         "keyword_hints": stored.get("keyword_hints") or dict(DEFAULT_KEYWORD_HINTS),
+        "k8s_cluster": stored.get("k8s_cluster") or "sandbox-cluster",
+        "k8s_namespace": stored.get("k8s_namespace") or "default",
+        "webhook_secret": mask_secret(stored.get("webhook_secret")) if mask_secrets else stored.get("webhook_secret"),
     }
 
     if mask_secrets:
         res["github_token_masked"] = mask_secret(effective_token)
         res["slack_webhook_url_masked"] = mask_secret(effective_slack)
+        res["webhook_secret_masked"] = mask_secret(stored.get("webhook_secret"))
 
     return res
 
