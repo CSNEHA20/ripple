@@ -127,11 +127,19 @@ export const CounterfactualPanel: React.FC<CounterfactualPanelProps> = ({
           </div>
         ) : (
           <div className="space-y-4">
-            <div className="grid gap-3">
-              <DiffCard idx={0} tone="red" count={counterfactualResult.only_observed.length} label="Observed only" sub="Avoided in hypothetical" items={counterfactualResult.only_observed} />
-              <DiffCard idx={1} tone="amber" count={counterfactualResult.both.length} label="Both impacted" sub="Shared core" items={counterfactualResult.both} />
-              <DiffCard idx={2} tone="blue" count={counterfactualResult.only_hypothetical.length} label="Hypothetical only" sub="New blast" items={counterfactualResult.only_hypothetical} />
-            </div>
+            {(() => {
+              const res = counterfactualResult as any;
+              const onlyObserved: string[] = res.only_observed || res.diff?.only_observed || [];
+              const bothImpacted: string[] = res.both || res.diff?.both || [];
+              const onlyHypothetical: string[] = res.only_hypothetical || res.diff?.only_hypothetical || [];
+              return (
+                <div className="grid gap-3">
+                  <DiffCard idx={0} tone="red" count={onlyObserved.length} label="Observed only" sub="Avoided in hypothetical" items={onlyObserved} />
+                  <DiffCard idx={1} tone="amber" count={bothImpacted.length} label="Both impacted" sub="Shared core" items={bothImpacted} />
+                  <DiffCard idx={2} tone="blue" count={onlyHypothetical.length} label="Hypothetical only" sub="New blast" items={onlyHypothetical} />
+                </div>
+              );
+            })()}
 
             {counterfactualResult.uncertainty && (
               <div className="flex gap-3 p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30">

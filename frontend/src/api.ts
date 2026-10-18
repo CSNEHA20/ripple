@@ -448,7 +448,27 @@ export async function getCounterfactual(
   });
   if (!res.ok) throw new Error('Counterfactual analysis failed');
   const json = await res.json();
-  return json.data;
+  const d = json.data || json || {};
+  const diff = d.diff || {};
+  return {
+    ...d,
+    diff,
+    only_observed: diff.only_observed || d.only_observed || [],
+    only_hypothetical: diff.only_hypothetical || d.only_hypothetical || [],
+    both: diff.both || d.both || [],
+    observed_blast: d.observed_blast || {
+      service: d.observed_incident_id || '',
+      total_affected: (diff.only_observed || []).length,
+      affected_services: (diff.only_observed || []).map((s: string) => ({ service: s, hops: 1 })),
+    },
+    hypothetical_blast: d.hypothetical_blast || {
+      service: d.hypothetical_service || '',
+      total_affected: (diff.only_hypothetical || []).length,
+      affected_services: (diff.only_hypothetical || []).map((s: string) => ({ service: s, hops: 1 })),
+    },
+    critical_owners: d.critical_owners || [],
+    uncertainty: typeof d.uncertainty === 'object' ? d.uncertainty : (d.uncertainty ? { note: d.uncertainty_note || 'Lower bound', is_lower_bound: true, unverified_edges_count: 1 } : undefined),
+  };
 }
 
 export async function askBrain(question: string, mode: string = 'replay', tenant: string = 'storefront'): Promise<AskBrainResponse> {

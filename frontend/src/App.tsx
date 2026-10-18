@@ -349,6 +349,10 @@ export default function App() {
 
   // Launch Agent Crew in Real Time with SSE streaming
   const handleRunCrew = async () => {
+    // Switch to incident view immediately so user sees the run
+    setActiveTab('incident');
+    navigate({ pathname: '/', search: searchParams.toString() });
+
     if (streamCleanupRef.current) {
       streamCleanupRef.current();
       streamCleanupRef.current = null;
@@ -366,13 +370,22 @@ export default function App() {
     try {
       // 1. If scenario selected, seed graph
       if (selectedScenarioId) {
-        await loadScenario(selectedScenarioId, tenant);
+        try {
+          await loadScenario(selectedScenarioId, tenant);
+        } catch (e) {
+          console.warn('Scenario load warning (proceeding anyway):', e);
+        }
       }
 
       // 2. Start Crew (Async 202 Accepted)
+      const alertPayload = {
+        service: customService || 'cartservice',
+        text: customAlertText || 'Degraded latency detected',
+      };
+
       const resp = await runIncidentCrew(
         {
-          alert: { service: customService, text: customAlertText },
+          alert: alertPayload,
           scenario_id: selectedScenarioId || undefined,
           mode: mode,
           auto_approve: false,
@@ -386,6 +399,29 @@ export default function App() {
         throw new Error('Failed to start incident: No incident ID returned from server.');
       }
       setCurrentIncidentId(incId);
+
+      // Helper to sync latest incident state from blackboard
+      const syncIncidentState = async () => {
+        try {
+          const state = await getIncident(incId, tenant);
+          if (state.blackboard?.hypotheses && state.blackboard.hypotheses.length > 0) {
+            setHypotheses(state.blackboard.hypotheses);
+            if (!selectedHypothesisId) {
+              setSelectedHypothesisId(state.blackboard.hypotheses[0].id);
+            }
+          }
+          if (state.pending_actions && state.pending_actions.length > 0) {
+            setPendingActions(state.pending_actions);
+            setActivePhase('awaiting_approval');
+          }
+          if (state.incident?.status === 'resolved' || state.incident?.status === 'closed') {
+            setIsRunning(false);
+            setActivePhase('closed');
+          }
+        } catch (err) {
+          console.warn('Sync poll warning:', err);
+        }
+      };
 
       // 3. Subscribe to real-time live SSE stream
       streamCleanupRef.current = subscribeIncidentStream(
@@ -407,28 +443,17 @@ export default function App() {
           } else if (sseEv.event === 'tool_called') {
             if (sseEv.data?.node_ids) setHighlightedNodes(new Set(sseEv.data.node_ids));
           } else if (sseEv.event === 'hypotheses_ranked') {
-            getIncident(incId, tenant).then((state) => {
-              if (state.blackboard?.hypotheses) {
-                setHypotheses(state.blackboard.hypotheses);
-                if (state.blackboard.hypotheses.length > 0) {
-                  setSelectedHypothesisId(state.blackboard.hypotheses[0].id);
-                }
-              }
-            }).catch(console.warn);
+            syncIncidentState();
           } else if (sseEv.event === 'approval_needed') {
             setActivePhase('awaiting_approval');
-            getIncident(incId, tenant).then((state) => {
-              if (state.pending_actions) setPendingActions(state.pending_actions);
-            }).catch(console.warn);
+            syncIncidentState();
           } else if (sseEv.event === 'action_executed') {
             setActivePhase('verifier');
+            syncIncidentState();
           } else if (sseEv.event === 'incident_closed') {
             setIsRunning(false);
             setActivePhase('closed');
-            getIncident(incId, tenant).then((state) => {
-              if (state.blackboard?.hypotheses) setHypotheses(state.blackboard.hypotheses);
-              if (state.pending_actions) setPendingActions(state.pending_actions);
-            }).catch(console.warn);
+            syncIncidentState();
             loadInitialGraph();
           }
         },
@@ -437,12 +462,20 @@ export default function App() {
         }
       );
 
+      // Background periodic polling as fallback for proxy buffering
+      const pollTimer = setInterval(async () => {
+        await syncIncidentState();
+      }, 1500);
+
+      // Stop polling after 45 seconds max
+      setTimeout(() => clearInterval(pollTimer), 45000);
+
       // Refresh topology for newly seeded/discovered nodes
       await loadInitialGraph();
     } catch (err: any) {
       console.error('Run crew error:', err);
-    } finally {
       setIsRunning(false);
+      alert(`Failed to start Agent Crew: ${err?.message || err}`);
     }
   };
 
