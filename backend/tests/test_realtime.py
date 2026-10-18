@@ -2047,6 +2047,9 @@ class MockT8TenantGraph:
         self.contradicted_by: dict[str, list[str]] = {}
         self.queries: list[tuple[str, dict]] = []
 
+    def ping(self) -> bool:
+        return True
+
     def query(self, cypher: str, params=None):
         params = params or {}
         self.queries.append((cypher, params))

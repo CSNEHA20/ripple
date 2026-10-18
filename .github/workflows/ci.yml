@@ -38,14 +38,31 @@ jobs:
       - name: Verify Python compilation
         run: python -m compileall backend/app
 
-      - name: Run Backend Tests
+      - name: Run Full Pytest Suite (All Tests against FalkorDB)
+        env:
+          FALKORDB_HOST: localhost
+          FALKORDB_PORT: 6379
+          ENVIRONMENT: test
+          AUTH_DEV_MODE: "true"
+        run: |
+          cd backend
+          pytest -v tests/
+
+      - name: Run Multi-Tenant Concurrent Load Test
         env:
           FALKORDB_HOST: localhost
           FALKORDB_PORT: 6379
           ENVIRONMENT: test
         run: |
-          cd backend
-          pytest -v tests/test_smoke.py tests/test_realtime.py
+          python scripts/run_load_test.py --tenants load_tenant_alpha,load_tenant_beta --incidents 15 --workers 8
+
+      - name: Run Real-Time End-to-End Test Suite
+        env:
+          FALKORDB_HOST: localhost
+          FALKORDB_PORT: 6379
+          ENVIRONMENT: test
+        run: |
+          python scripts/e2e_realtime_test.py --testclient
 
   frontend-build:
     name: Frontend Typecheck & Build (Node 20)
@@ -67,7 +84,32 @@ jobs:
           cd frontend
           npm ci
 
-      - name: Run TypeScript typecheck
+      - name: Run TypeScript typecheck & production build
         run: |
           cd frontend
           npm run build
+
+  docker-build:
+    name: Production Multi-Stage Docker Images Build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: actions/setup-buildx-action@v3
+
+      - name: Build Backend Production Image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./backend
+          push: false
+          tags: ripple-backend:latest
+
+      - name: Build Frontend Multi-Stage Nginx Image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./frontend
+          push: false
+          tags: ripple-frontend:latest

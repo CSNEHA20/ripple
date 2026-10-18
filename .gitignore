@@ -62,5 +62,7 @@ backend/data/api_keys_seed.json
 backend/data/alert_dedupe.json
 backend/data/events/
 backend/data/replay_cache/
+data/benchmark_runs/[0-9]*.json
+backend/data/benchmark_runs/[0-9]*.json
 
 

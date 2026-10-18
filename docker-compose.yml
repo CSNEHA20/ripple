@@ -44,7 +44,8 @@ services:
       dockerfile: Dockerfile
     container_name: ripple-frontend
     ports:
-      - "5173:5173"
+      - "5173:80"
+      - "80:80"
     environment:
       - VITE_BACKEND_URL=http://backend:8000
     depends_on:

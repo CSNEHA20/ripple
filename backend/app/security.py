@@ -308,7 +308,10 @@ def verify_webhook_signature(
     Fails closed in production if neither secret nor token is configured, or credentials are invalid.
     """
     effective_secret = secret if secret is not None else settings.webhook_secret
-    effective_token = token if token is not None else settings.webhook_token
+    if secret == "" and token is None:
+        effective_token = ""
+    else:
+        effective_token = token if token is not None else settings.webhook_token
 
     # Production fail-closed check
     if settings.environment == "production":

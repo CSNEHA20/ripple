@@ -362,7 +362,9 @@ def reembed_tenant(
 
 
 @app.post("/webhooks/alert")
+@app.post("/webhooks/alerts")
 @app.post("/api/webhooks/alert")
+@app.post("/api/webhooks/alerts")
 async def alert_webhook(
     request: Request,
     background_tasks: BackgroundTasks,
@@ -1292,6 +1294,36 @@ def api_get_incident(
             "telemetry_degraded": bool(r[7]) if len(r) > 7 and r[7] is not None else False,
             "telemetry_degraded_reason": r[8] if len(r) > 8 else None,
         }
+    else:
+        # Fallback to event bus history when FalkorDB is offline or query returns empty
+        hist = event_bus._history.get(incident_id) or event_bus._load_persisted_events(incident_id)
+        if hist:
+            first_ev = hist[0]
+            first_data = first_ev.get("data", {}) if isinstance(first_ev.get("data"), dict) else {}
+            st = "investigating"
+            for ev in reversed(hist):
+                ev_type = ev.get("event")
+                if ev_type == "incident_closed":
+                    st = ev.get("data", {}).get("status", "resolved")
+                    break
+                elif ev_type in ("outcome_verified", "action_verified"):
+                    st = "mitigated"
+                    break
+                elif ev_type == "approval_needed":
+                    st = "action_required"
+                    break
+
+            inc_info = {
+                "id": incident_id,
+                "title": f"Incident on {first_data.get('service', 'service')}",
+                "status": st,
+                "opened_ts": first_ev.get("ts", time.time()),
+                "resolved_ts": None,
+                "llm_degraded": False,
+                "llm_degraded_reason": None,
+                "telemetry_degraded": False,
+                "telemetry_degraded_reason": None,
+            }
 
     return {
         "incident": inc_info,
