@@ -188,24 +188,38 @@ class NVIDIAProvider(BaseLLMProvider):
         schema: Type[T],
     ) -> dict[str, Any] | None:
         try:
-            from openai import OpenAI
-            client = OpenAI(base_url=self.base_url, api_key=self.api_key)
+            url = f"{self.base_url.rstrip('/')}/chat/completions"
+            headers = {
+                "Authorization": f"Bearer {self.api_key}",
+                "Content-Type": "application/json",
+            }
             json_schema_prompt = (
                 f"{prompt}\n\nYou must return a valid JSON object matching this schema:\n"
                 f"{json.dumps(schema.model_json_schema())}"
             )
-            response = client.chat.completions.create(
-                model=self.model,
-                messages=[
+            payload = {
+                "model": self.model,
+                "messages": [
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": json_schema_prompt},
                 ],
-                temperature=0.0,
-                response_format={"type": "json_object"},
-            )
-            content = response.choices[0].message.content or "{}"
-            parsed = json.loads(content)
-            return schema.model_validate(parsed).model_dump()
+                "temperature": 0.0,
+                "response_format": {"type": "json_object"},
+            }
+            with httpx.Client(timeout=60.0) as client:
+                res = client.post(url, json=payload, headers=headers)
+                if res.status_code == 200:
+                    data = res.json()
+                    content = data["choices"][0]["message"]["content"] or "{}"
+                    # Robust JSON extraction
+                    match = re.search(r"\{.*\}", content, re.DOTALL)
+                    if match:
+                        parsed = json.loads(match.group(0))
+                        return schema.model_validate(parsed).model_dump()
+                    parsed = json.loads(content)
+                    return schema.model_validate(parsed).model_dump()
+                logger.warning(f"NVIDIA complete_structured HTTP error {res.status_code}: {res.text[:200]}")
+                return None
         except Exception as e:
             logger.warning(f"NVIDIA complete_structured failed: {e}")
             return None
@@ -216,8 +230,11 @@ class NVIDIAProvider(BaseLLMProvider):
         tools: list[dict[str, Any]],
     ) -> dict[str, Any] | None:
         try:
-            from openai import OpenAI
-            client = OpenAI(base_url=self.base_url, api_key=self.api_key)
+            url = f"{self.base_url.rstrip('/')}/chat/completions"
+            headers = {
+                "Authorization": f"Bearer {self.api_key}",
+                "Content-Type": "application/json",
+            }
             formatted_tools = [
                 {
                     "type": "function",
@@ -229,27 +246,37 @@ class NVIDIAProvider(BaseLLMProvider):
                 }
                 for t in tools
             ]
-            response = client.chat.completions.create(
-                model=self.model,
-                messages=messages,
-                tools=formatted_tools if formatted_tools else None,
-                tool_choice="auto" if formatted_tools else None,
-                temperature=0.0,
-            )
-            msg = response.choices[0].message
-            tool_calls = []
-            if msg.tool_calls:
-                for tc in msg.tool_calls:
-                    tool_calls.append({
-                        "id": tc.id,
-                        "name": tc.function.name,
-                        "arguments": json.loads(tc.function.arguments) if tc.function.arguments else {},
-                    })
-            return {
-                "role": "assistant",
-                "content": msg.content or "",
-                "tool_calls": tool_calls,
+            payload = {
+                "model": self.model,
+                "messages": messages,
+                "temperature": 0.0,
             }
+            if formatted_tools:
+                payload["tools"] = formatted_tools
+                payload["tool_choice"] = "auto"
+
+            with httpx.Client(timeout=60.0) as client:
+                res = client.post(url, json=payload, headers=headers)
+                if res.status_code == 200:
+                    data = res.json()
+                    msg = data["choices"][0]["message"]
+                    tool_calls = []
+                    if msg.get("tool_calls"):
+                        for tc in msg["tool_calls"]:
+                            fn = tc.get("function", {})
+                            args = fn.get("arguments", "{}")
+                            tool_calls.append({
+                                "id": tc.get("id"),
+                                "name": fn.get("name"),
+                                "arguments": json.loads(args) if isinstance(args, str) else args,
+                            })
+                    return {
+                        "role": "assistant",
+                        "content": msg.get("content") or "",
+                        "tool_calls": tool_calls,
+                    }
+                logger.warning(f"NVIDIA complete_with_tools HTTP error {res.status_code}: {res.text[:200]}")
+                return None
         except Exception as e:
             logger.warning(f"NVIDIA complete_with_tools failed: {e}")
             return None

@@ -16,4 +16,4 @@ receivers:
         http_config:
           authorization:
             type: Bearer
-            credentials: "ripple_alertmanager_token_secret"
+            credentials: "ripple_whtok_91a4c8e2b7f3d560"

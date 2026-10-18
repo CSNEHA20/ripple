@@ -268,8 +268,15 @@ def execute_tool(
     arguments: dict[str, Any] | None = None,
 ) -> ToolResult:
     """Execute a tool by name with arguments against the given TenantGraph."""
+    import inspect
     func = TOOL_FUNCTIONS.get(name)
     if not func:
         raise ValueError(f"Unknown tool '{name}'. Available: {list(TOOL_FUNCTIONS.keys())}")
-    args = arguments or {}
-    return func(graph=graph, **args)
+    args = dict(arguments or {})
+    sig = inspect.signature(func)
+    has_var_kw = any(p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values())
+    if not has_var_kw:
+        args = {k: v for k, v in args.items() if k in sig.parameters}
+    if "graph" in sig.parameters:
+        return func(graph=graph, **args)
+    return func(**args)

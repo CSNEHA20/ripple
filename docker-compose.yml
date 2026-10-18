@@ -28,11 +28,11 @@ services:
       - ./backend/pyproject.toml:/app/pyproject.toml
       - ./data:/app/data
     command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    env_file:
+      - .env
     environment:
       - FALKORDB_HOST=falkordb
       - FALKORDB_PORT=6379
-      - ENVIRONMENT=development
-      - WEBHOOK_TOKEN=${WEBHOOK_TOKEN:-ripple_alertmanager_token_secret}
     depends_on:
       falkordb:
         condition: service_healthy

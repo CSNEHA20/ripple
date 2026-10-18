@@ -1,0 +1,32 @@
+services:
+  - type: web
+    name: ripple-backend
+    runtime: docker
+    dockerfilePath: ./Dockerfile.standalone
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+      - key: LLM_PROVIDER
+        value: nemotron
+      - key: NVIDIA_BASE_URL
+        value: https://integrate.api.nvidia.com/v1
+      - key: NEMOTRON_MODEL
+        value: meta/llama-3.2-11b-vision-instruct
+      - key: NVIDIA_API_KEY
+        sync: false
+      - key: NEMOTRON_API_KEY
+        sync: false
+      - key: SETTINGS_ENCRYPTION_KEY
+        sync: false
+      - key: GITHUB_TOKEN
+        sync: false
+      - key: GITHUB_REPO
+        value: Vishallakshmikanthan/ripple-demo-repo
+      - key: SLACK_WEBHOOK_URL
+        sync: false
+      - key: WEBHOOK_TOKEN
+        sync: false
+      - key: WEBHOOK_SECRET
+        sync: false

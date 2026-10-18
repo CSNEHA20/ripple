@@ -60,9 +60,10 @@ data/alert_dedupe.json
 backend/data/api_keys.json
 backend/data/api_keys_seed.json
 backend/data/alert_dedupe.json
-backend/data/events/
-backend/data/replay_cache/
-data/benchmark_runs/[0-9]*.json
-backend/data/benchmark_runs/[0-9]*.json
+**/events/
+**/replay_cache/
+**/benchmark_runs/
+data/pr_files_cache.json
+backend/data/pr_files_cache.json
 
 

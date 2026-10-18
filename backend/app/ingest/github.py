@@ -349,6 +349,10 @@ def fetch_paginated_resource(
                 all_items.extend(cached_page)
             break
 
+        if resp.status_code in (204, 409):
+            # 204: No Content (e.g. empty contributors list), 409: Empty Git repository
+            break
+
         if resp.status_code in (403, 429):
             rem = resp.headers.get("x-ratelimit-remaining")
             retry_after = resp.headers.get("retry-after")
