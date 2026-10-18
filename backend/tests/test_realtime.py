@@ -1420,6 +1420,383 @@ def test_t5_failed_fetch_reporting(monkeypatch):
     assert result["pull_requests"] == 0
 
 
+# ==============================================================================
+# T6: Per-Tenant Integration Settings Tests
+# ==============================================================================
+
+def test_t6_two_tenants_different_webhooks_and_repos_and_unconfigured_refusal(monkeypatch):
+    """T6 Acceptance Test:
+    - Two tenants send Slack messages to different webhooks and dispatch to different repos.
+    - Workflow file and ref are dynamically resolved from tenant settings (not hard-coded).
+    - An unconfigured tenant gets a clean refusal for both Slack and GitHub dispatch.
+    """
+    from app.tenant_settings import update_tenant_settings
+    from app.actions.executors import execute_action
+    from unittest.mock import MagicMock
+    import httpx
+
+    # Set up Tenant Alpha
+    alpha_graph = MagicMock()
+    alpha_graph.tenant_id = "tenant_alpha_store"
+    alpha_graph.query.return_value = None
+
+    update_tenant_settings(
+        tenant_id="tenant_alpha_store",
+        updates={
+            "slack_webhook_url": "https://hooks.slack.com/services/AAA/BBB/111",
+            "github_repo": "org-alpha/repo-alpha",
+            "github_workflow": "deploy-alpha.yml",
+            "github_ref": "release-alpha",
+            "github_token": "ghp_alpha_token_123",
+        },
+        graph=alpha_graph,
+    )
+
+    # Set up Tenant Beta
+    beta_graph = MagicMock()
+    beta_graph.tenant_id = "tenant_beta_store"
+    beta_graph.query.return_value = None
+
+    update_tenant_settings(
+        tenant_id="tenant_beta_store",
+        updates={
+            "slack_webhook_url": "https://hooks.slack.com/services/XXX/YYY/222",
+            "github_repo": "org-beta/repo-beta",
+            "github_workflow": "rollback-beta.yml",
+            "github_ref": "release-beta",
+            "github_token": "ghp_beta_token_456",
+        },
+        graph=beta_graph,
+    )
+
+    # Set up Unconfigured Tenant
+    unconfigured_graph = MagicMock()
+    unconfigured_graph.tenant_id = "tenant_unconfigured_org"
+    unconfigured_graph.query.return_value = None
+
+    captured_posts = []
+
+    def mock_post(self, url, *args, **kwargs):
+        captured_posts.append((str(url), kwargs.get("json", {}), kwargs.get("headers", {})))
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.text = '{"ok": true}'
+        return mock_resp
+
+    monkeypatch.setattr(httpx.Client, "post", mock_post)
+
+    # 1. Tenant Alpha executes Slack notification
+    receipt_slack_alpha = execute_action(
+        graph=alpha_graph,
+        incident_id="inc_alpha_01",
+        action_id="act_slack_alpha",
+        action_kind="notify_slack",
+        payload={"text": "Alpha critical alert"},
+        approver="alpha_op",
+    )
+    assert receipt_slack_alpha.status == "executed"
+    assert any("AAA/BBB/111" in url for (url, json_data, headers) in captured_posts)
+
+    # 2. Tenant Alpha executes GitHub dispatch
+    receipt_gh_alpha = execute_action(
+        graph=alpha_graph,
+        incident_id="inc_alpha_02",
+        action_id="act_gh_alpha",
+        action_kind="github_rollback",
+        payload={"service": "paymentservice", "version": "v1.2"},
+        approver="alpha_op",
+    )
+    assert receipt_gh_alpha.status == "executed"
+    assert receipt_gh_alpha.details["repo"] == "org-alpha/repo-alpha"
+    assert receipt_gh_alpha.details["workflow"] == "deploy-alpha.yml"
+    assert receipt_gh_alpha.details["ref"] == "release-alpha"
+    # Verify GitHub API call dispatched to Alpha's repo and workflow with Alpha's ref
+    alpha_dispatches = [
+        (url, body, headers) for (url, body, headers) in captured_posts
+        if "org-alpha/repo-alpha/actions/workflows/deploy-alpha.yml/dispatches" in url
+    ]
+    assert len(alpha_dispatches) == 1
+    assert alpha_dispatches[0][1]["ref"] == "release-alpha"
+    assert "Bearer ghp_alpha_token_123" in alpha_dispatches[0][2].get("Authorization", "")
+
+    # 3. Tenant Beta executes Slack notification
+    receipt_slack_beta = execute_action(
+        graph=beta_graph,
+        incident_id="inc_beta_01",
+        action_id="act_slack_beta",
+        action_kind="notify_slack",
+        payload={"text": "Beta warning alert"},
+        approver="beta_op",
+    )
+    assert receipt_slack_beta.status == "executed"
+    assert any("XXX/YYY/222" in url for (url, json_data, headers) in captured_posts)
+
+    # 4. Tenant Beta executes GitHub dispatch
+    receipt_gh_beta = execute_action(
+        graph=beta_graph,
+        incident_id="inc_beta_02",
+        action_id="act_gh_beta",
+        action_kind="github_rollback",
+        payload={"service": "cartservice", "version": "v2.0"},
+        approver="beta_op",
+    )
+    assert receipt_gh_beta.status == "executed"
+    assert receipt_gh_beta.details["repo"] == "org-beta/repo-beta"
+    assert receipt_gh_beta.details["workflow"] == "rollback-beta.yml"
+    assert receipt_gh_beta.details["ref"] == "release-beta"
+    beta_dispatches = [
+        (url, body, headers) for (url, body, headers) in captured_posts
+        if "org-beta/repo-beta/actions/workflows/rollback-beta.yml/dispatches" in url
+    ]
+    assert len(beta_dispatches) == 1
+    assert beta_dispatches[0][1]["ref"] == "release-beta"
+    assert "Bearer ghp_beta_token_456" in beta_dispatches[0][2].get("Authorization", "")
+
+    # 5. Unconfigured Tenant gets clean refusal for Slack
+    receipt_slack_unconf = execute_action(
+        graph=unconfigured_graph,
+        incident_id="inc_unconf_01",
+        action_id="act_slack_unconf",
+        action_kind="notify_slack",
+        payload={"text": "Unconfigured alert"},
+        approver="test_op",
+    )
+    assert receipt_slack_unconf.status == "refused"
+    assert receipt_slack_unconf.details["configured"] is False
+    assert "No Slack webhook URL configured" in receipt_slack_unconf.details["error"]
+
+    # 6. Unconfigured Tenant gets clean refusal for GitHub dispatch
+    receipt_gh_unconf = execute_action(
+        graph=unconfigured_graph,
+        incident_id="inc_unconf_02",
+        action_id="act_gh_unconf",
+        action_kind="github_rollback",
+        payload={"service": "paymentservice"},
+        approver="test_op",
+    )
+    assert receipt_gh_unconf.status == "refused"
+    assert receipt_gh_unconf.details["configured"] is False
+    assert "No GitHub repository configured" in receipt_gh_unconf.details["error"]
+
+
+def test_t6_secret_encryption_at_rest_and_masking():
+    """T6: Keep secrets out of logs and encrypt at rest."""
+    from app.tenant_settings import (
+        encrypt_secret,
+        decrypt_secret,
+        mask_secret,
+        get_tenant_settings,
+        update_tenant_settings,
+    )
+    from unittest.mock import MagicMock
+
+    raw_token = "ghp_super_secret_pat_9876543210abcdef"
+    raw_slack = "https://hooks.slack.com/services/T123/B456/SecretWebhookKey789"
+
+    # 1. Encryption and decryption round-trip
+    encrypted_token = encrypt_secret(raw_token)
+    assert encrypted_token.startswith("enc:v1:")
+    assert raw_token not in encrypted_token
+    assert decrypt_secret(encrypted_token) == raw_token
+
+    # 2. Masking
+    masked_token = mask_secret(raw_token)
+    assert masked_token == "ghp_***def"
+    assert raw_token not in masked_token
+
+    masked_slack = mask_secret(raw_slack)
+    assert masked_slack.startswith("https://hooks.slack.com/***")
+    assert "SecretWebhookKey789" not in masked_slack
+
+    # 3. Graph query verifies encryption at rest
+    mock_graph = MagicMock()
+    mock_graph.query.return_value = None
+
+    update_tenant_settings(
+        tenant_id="tenant_encrypted_test",
+        updates={
+            "github_repo": "acme/secret-repo",
+            "github_token": raw_token,
+            "slack_webhook_url": raw_slack,
+        },
+        graph=mock_graph,
+    )
+
+    query_calls = [call for call in mock_graph.query.call_args_list]
+    call_params = query_calls[0][0][1]
+    # Parameter passed to Cypher query MUST be encrypted
+    assert call_params["gh_token"].startswith("enc:v1:")
+    assert call_params["slack"].startswith("enc:v1:")
+    assert raw_token not in call_params["gh_token"]
+    assert raw_slack not in call_params["slack"]
+
+    # 4. get_tenant_settings with mask_secrets=True keeps secrets out of API/logs
+    cfg_masked = get_tenant_settings("tenant_encrypted_test", graph=mock_graph, mask_secrets=True)
+    assert cfg_masked["github_token"] == "ghp_***def"
+    assert cfg_masked["slack_webhook_url"].startswith("https://hooks.slack.com/***")
+    assert cfg_masked["github_configured"] is True
+    assert cfg_masked["slack_configured"] is True
+
+
+def test_t6_notifications_use_tenant_settings(monkeypatch):
+    """T6: Notifications read per-tenant settings instead of global ones."""
+    from app.notifications.service import notify_incident_event
+    from app.tenant_settings import update_tenant_settings
+    from unittest.mock import MagicMock
+    import httpx
+
+    alpha_graph = MagicMock()
+    alpha_graph.tenant_id = "tenant_notify_alpha"
+    alpha_graph.query.return_value = None
+
+    update_tenant_settings(
+        tenant_id="tenant_notify_alpha",
+        updates={"slack_webhook_url": "https://hooks.slack.com/services/NOTIF/AAA/111"},
+        graph=alpha_graph,
+    )
+
+    unconf_graph = MagicMock()
+    unconf_graph.tenant_id = "tenant_notify_unconf"
+    unconf_graph.query.return_value = None
+
+    sent_urls = []
+    def mock_post(self, url, *args, **kwargs):
+        sent_urls.append(str(url))
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.text = "ok"
+        return mock_resp
+
+    monkeypatch.setattr(httpx.Client, "post", mock_post)
+
+    # 1. Configured tenant sends notification
+    notify_incident_event(
+        graph=alpha_graph,
+        event_type="incident_opened",
+        incident_id="inc_notif_01",
+        data={"service": "paymentservice", "alert": {"text": "High latency"}},
+    )
+    assert any("NOTIF/AAA/111" in u for u in sent_urls)
+
+    # 2. Unconfigured tenant safely skips without sending to foreign webhooks
+    sent_before = len(sent_urls)
+    notify_incident_event(
+        graph=unconf_graph,
+        event_type="incident_opened",
+        incident_id="inc_notif_02",
+        data={"service": "paymentservice", "alert": {"text": "High latency"}},
+    )
+    assert len(sent_urls) == sent_before
+
+
+def test_t6_admin_settings_and_test_connection_endpoints(monkeypatch):
+    """T6: Admin-only settings endpoint and test-connection endpoints for Slack, GitHub, and Prometheus."""
+    from fastapi.testclient import TestClient
+    from app.main import app
+    from app.security import register_api_key
+    import httpx
+    from unittest.mock import MagicMock
+
+    monkeypatch.setattr("app.main.get_falkordb_client", lambda: MagicMock())
+    monkeypatch.setattr("app.main.bootstrap_tenant_all", lambda *a, **kw: None)
+    monkeypatch.setattr("app.main.bootstrap_second_tenant", lambda *a, **kw: None)
+
+    client = TestClient(app)
+
+    # Register admin key and viewer key
+    admin_key = "admin_key_test_12345678"
+    register_api_key(raw_key=admin_key, tenant_id="tenant_admin_test", role="admin", persist=False)
+
+    viewer_key = "viewer_key_test_87654321"
+    register_api_key(raw_key=viewer_key, tenant_id="tenant_admin_test", role="viewer", persist=False)
+
+    # 1. Viewer role is refused (HTTP 403 Forbidden)
+    resp_viewer = client.post(
+        "/api/integrations/settings",
+        json={"github_repo": "test/repo"},
+        headers={"X-API-Key": viewer_key},
+    )
+    assert resp_viewer.status_code == 403
+
+    resp_viewer_test = client.post(
+        "/api/integrations/test/slack",
+        headers={"X-API-Key": viewer_key},
+    )
+    assert resp_viewer_test.status_code == 403
+
+    # 2. Admin role can update settings
+    update_payload = {
+        "github_repo": "acme/custom-service",
+        "github_token": "ghp_admin_secret_token_12345",
+        "workflow_file": "custom-rollback.yml",
+        "ref": "release-v3",
+        "slack_webhook_url": "https://hooks.slack.com/services/TEST/ADMIN/999",
+        "prometheus_url": "http://prom.internal:9090",
+    }
+    resp_admin = client.post(
+        "/api/integrations/settings",
+        json=update_payload,
+        headers={"X-API-Key": admin_key},
+    )
+    assert resp_admin.status_code == 200
+    data = resp_admin.json()
+    assert data["status"] == "success"
+    # Secrets in response MUST be masked
+    assert data["settings"]["github_token"] == "ghp_***345"
+    assert data["settings"]["slack_webhook_url"].startswith("https://hooks.slack.com/***")
+    assert data["settings"]["github_workflow"] == "custom-rollback.yml"
+    assert data["settings"]["github_ref"] == "release-v3"
+
+    # 3. Test Connection endpoints
+    captured_requests = []
+    def mock_client_get(self, url, *args, **kwargs):
+        captured_requests.append(("GET", str(url), kwargs))
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = {"permissions": {"admin": True, "push": True}}
+        mock_resp.text = '{"permissions": {"admin": true, "push": true}}'
+        return mock_resp
+
+    def mock_client_post(self, url, *args, **kwargs):
+        captured_requests.append(("POST", str(url), kwargs))
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.text = "ok"
+        return mock_resp
+
+    monkeypatch.setattr(httpx.Client, "get", mock_client_get)
+    monkeypatch.setattr(httpx.Client, "post", mock_client_post)
+
+    # Slack test connection
+    resp_slack = client.post("/api/integrations/test/slack", headers={"X-API-Key": admin_key})
+    assert resp_slack.status_code == 200
+    assert resp_slack.json()["status"] == "success"
+    assert any("TEST/ADMIN/999" in req[1] for req in captured_requests if req[0] == "POST")
+
+    # GitHub test connection
+    resp_gh = client.post("/api/integrations/test/github", headers={"X-API-Key": admin_key})
+    assert resp_gh.status_code == 200
+    assert resp_gh.json()["status"] == "success"
+    assert any("api.github.com/repos/acme/custom-service" in req[1] for req in captured_requests if req[0] == "GET")
+
+    # Prometheus test connection
+    resp_prom = client.post("/api/integrations/test/prometheus", headers={"X-API-Key": admin_key})
+    assert resp_prom.status_code == 200
+    assert resp_prom.json()["status"] == "success"
+    assert any("prom.internal:9090/api/v1/query" in req[1] for req in captured_requests if req[0] == "GET")
+
+    # Unified test connection endpoint
+    resp_unified = client.post(
+        "/api/integrations/test-connection",
+        json={"target": "slack"},
+        headers={"X-API-Key": admin_key},
+    )
+    assert resp_unified.status_code == 200
+    assert resp_unified.json()["status"] == "success"
+
+
+
+
 
 
 

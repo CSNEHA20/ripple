@@ -3,6 +3,7 @@ import uuid
 import json
 import secrets
 import time
+import httpx
 from contextlib import asynccontextmanager
 from typing import Annotated, Any
 from pydantic import BaseModel
@@ -1899,10 +1900,25 @@ def api_discover_topology(
 
 class IntegrationSettingsUpdate(BaseModel):
     github_repo: str | None = None
+    github_token: str | None = None
+    github_workflow: str | None = None
+    workflow_file: str | None = None
+    github_ref: str | None = None
+    ref: str | None = None
     slack_webhook_url: str | None = None
     prometheus_url: str | None = None
     telemetry_source: str | None = None
     dry_run_default: bool | None = None
+    path_to_service: dict[str, str] | None = None
+    keyword_hints: dict[str, list[str]] | None = None
+
+
+class TestConnectionRequest(BaseModel):
+    target: str | None = None  # "slack", "github", "prometheus"
+    webhook_url: str | None = None
+    repo: str | None = None
+    token: str | None = None
+    prometheus_url: str | None = None
 
 
 from app.tenant_settings import get_tenant_settings, update_tenant_settings
@@ -1912,8 +1928,8 @@ from app.tenant_settings import get_tenant_settings, update_tenant_settings
 def api_get_integration_settings(
     graph: TenantGraph = Depends(get_current_tenant),
 ):
-    """Retrieve integration settings for active tenant."""
-    return get_tenant_settings(graph.tenant_id, graph=graph)
+    """Retrieve integration settings for active tenant with masked secrets."""
+    return get_tenant_settings(graph.tenant_id, graph=graph, mask_secrets=True)
 
 
 @app.post("/api/integrations/settings")
@@ -1924,12 +1940,189 @@ def api_update_integration_settings(
 ):
     """Update integration settings for active tenant. Requires 'admin' role."""
     updates = req.model_dump(exclude_unset=True)
+    if "workflow_file" in updates and "github_workflow" not in updates:
+        updates["github_workflow"] = updates.pop("workflow_file")
+    if "ref" in updates and "github_ref" not in updates:
+        updates["github_ref"] = updates.pop("ref")
+
     updated = update_tenant_settings(graph.tenant_id, updates, graph=graph)
+    masked = get_tenant_settings(graph.tenant_id, graph=graph, mask_secrets=True)
     return {
         "status": "success",
         "tenant_id": graph.tenant_id,
-        "settings": updated,
+        "settings": masked,
     }
+
+
+@app.post("/api/integrations/test/slack")
+@app.post("/api/integrations/test-connection/slack")
+def api_test_connection_slack(
+    req: TestConnectionRequest | None = None,
+    graph: TenantGraph = Depends(get_current_tenant),
+    auth: dict[str, Any] = Depends(require_role("admin")),
+):
+    """Admin-only test connection endpoint: sends test message to Slack webhook."""
+    t_cfg = get_tenant_settings(graph.tenant_id, graph=graph, mask_secrets=False)
+    target_url = (req.webhook_url if req else None) or t_cfg.get("slack_webhook_url")
+    if not target_url:
+        return {
+            "status": "refused",
+            "target": "slack",
+            "configured": False,
+            "error": "No Slack webhook URL configured for this tenant. Configure webhook in Integrations settings.",
+        }
+
+    now_iso = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    text = f"🚨 *Ripple Test Connection*: Ping from tenant `{graph.tenant_id}` at `{now_iso}`. Integration is healthy."
+    try:
+        with httpx.Client(timeout=6.0) as client:
+            resp = client.post(target_url, json={"text": text})
+            if resp.status_code == 200:
+                return {
+                    "status": "success",
+                    "target": "slack",
+                    "configured": True,
+                    "message": "Slack test message sent successfully",
+                    "http_status": resp.status_code,
+                }
+            return {
+                "status": "failed",
+                "target": "slack",
+                "configured": True,
+                "error": f"Slack API returned HTTP {resp.status_code}: {resp.text[:100]}",
+                "http_status": resp.status_code,
+            }
+    except Exception as e:
+        logger.warning(f"Slack test connection failed for tenant '{graph.tenant_id}': {e}")
+        return {
+            "status": "failed",
+            "target": "slack",
+            "configured": True,
+            "error": str(e),
+        }
+
+
+@app.post("/api/integrations/test/github")
+@app.post("/api/integrations/test-connection/github")
+def api_test_connection_github(
+    req: TestConnectionRequest | None = None,
+    graph: TenantGraph = Depends(get_current_tenant),
+    auth: dict[str, Any] = Depends(require_role("admin")),
+):
+    """Admin-only test connection endpoint: ping GitHub API to verify repo access and token."""
+    t_cfg = get_tenant_settings(graph.tenant_id, graph=graph, mask_secrets=False)
+    repo = (req.repo if req else None) or t_cfg.get("github_repo")
+    token = (req.token if req else None) or t_cfg.get("github_token")
+
+    if not repo or not token:
+        return {
+            "status": "refused",
+            "target": "github",
+            "configured": False,
+            "error": "No GitHub repository and token configured for this tenant. Configure repository and token in Integrations settings.",
+        }
+
+    try:
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Accept": "application/vnd.github+json",
+            "User-Agent": "Ripple-Integration-Test",
+        }
+        with httpx.Client(timeout=8.0) as client:
+            resp = client.get(f"https://api.github.com/repos/{repo}", headers=headers)
+            if resp.status_code == 200:
+                data = resp.json()
+                return {
+                    "status": "success",
+                    "target": "github",
+                    "configured": True,
+                    "message": f"GitHub API ping successful for repository '{repo}'",
+                    "repo": repo,
+                    "permissions": data.get("permissions", {}),
+                    "http_status": 200,
+                }
+            return {
+                "status": "failed",
+                "target": "github",
+                "configured": True,
+                "error": f"GitHub API returned HTTP {resp.status_code}: {resp.text[:120]}",
+                "http_status": resp.status_code,
+            }
+    except Exception as e:
+        logger.warning(f"GitHub test connection failed for repo '{repo}': {e}")
+        return {
+            "status": "failed",
+            "target": "github",
+            "configured": True,
+            "error": str(e),
+        }
+
+
+@app.post("/api/integrations/test/prometheus")
+@app.post("/api/integrations/test-connection/prometheus")
+def api_test_connection_prometheus(
+    req: TestConnectionRequest | None = None,
+    graph: TenantGraph = Depends(get_current_tenant),
+    auth: dict[str, Any] = Depends(require_role("admin")),
+):
+    """Admin-only test connection endpoint: perform test Prometheus query (up)."""
+    t_cfg = get_tenant_settings(graph.tenant_id, graph=graph, mask_secrets=False)
+    prom_url = (req.prometheus_url if req else None) or t_cfg.get("prometheus_url")
+
+    if not prom_url:
+        return {
+            "status": "refused",
+            "target": "prometheus",
+            "configured": False,
+            "error": "No Prometheus URL configured for this tenant. Configure Prometheus in Integrations settings.",
+        }
+
+    try:
+        endpoint = f"{prom_url.rstrip('/')}/api/v1/query"
+        with httpx.Client(timeout=5.0) as client:
+            resp = client.get(endpoint, params={"query": "up"})
+            if resp.status_code == 200:
+                return {
+                    "status": "success",
+                    "target": "prometheus",
+                    "configured": True,
+                    "message": "Prometheus query executed successfully",
+                    "url": prom_url,
+                    "http_status": 200,
+                }
+            return {
+                "status": "failed",
+                "target": "prometheus",
+                "configured": True,
+                "error": f"Prometheus query returned HTTP {resp.status_code}: {resp.text[:100]}",
+                "http_status": resp.status_code,
+            }
+    except Exception as e:
+        logger.warning(f"Prometheus test query failed for '{prom_url}': {e}")
+        return {
+            "status": "failed",
+            "target": "prometheus",
+            "configured": True,
+            "error": str(e),
+        }
+
+
+@app.post("/api/integrations/test-connection")
+def api_test_connection_unified(
+    req: TestConnectionRequest,
+    graph: TenantGraph = Depends(get_current_tenant),
+    auth: dict[str, Any] = Depends(require_role("admin")),
+):
+    """Admin-only unified test connection endpoint dispatching to specific target."""
+    target = (req.target or "").lower().strip()
+    if target == "slack":
+        return api_test_connection_slack(req, graph=graph, auth=auth)
+    elif target in ("github", "gh"):
+        return api_test_connection_github(req, graph=graph, auth=auth)
+    elif target in ("prometheus", "prom"):
+        return api_test_connection_prometheus(req, graph=graph, auth=auth)
+    raise HTTPException(status_code=400, detail=f"Invalid target '{req.target}'. Supported: 'slack', 'github', 'prometheus'.")
+
 
 
 @app.get("/api/audit/logs")

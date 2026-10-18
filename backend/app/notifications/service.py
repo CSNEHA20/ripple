@@ -3,10 +3,9 @@ from typing import Any
 from app.config import settings
 from app.actions.executors.slack import SlackActionExecutor
 from app.tenancy import TenantGraph
+from app.tenant_settings import get_tenant_settings
 
 logger = logging.getLogger("ripple.notifications")
-
-_slack_executor = SlackActionExecutor()
 
 
 def notify_incident_event(
@@ -15,8 +14,11 @@ def notify_incident_event(
     incident_id: str,
     data: dict[str, Any],
 ) -> None:
-    """Publish real-time notification to registered webhook and Slack channels."""
-    if not settings.slack_webhook_url:
+    """Publish real-time notification to tenant's registered Slack webhook."""
+    tenant_id = getattr(graph, "tenant_id", None)
+    t_cfg = get_tenant_settings(tenant_id, graph=graph) if graph else {}
+    slack_url = t_cfg.get("slack_webhook_url")
+    if not slack_url:
         return
 
     text = ""
@@ -33,7 +35,8 @@ def notify_incident_event(
 
     if text:
         try:
-            _slack_executor.execute(
+            executor = SlackActionExecutor(webhook_url=slack_url)
+            executor.execute(
                 graph=graph,
                 incident_id=incident_id,
                 action_id=f"notif_{event_type}_{incident_id}",
@@ -43,3 +46,4 @@ def notify_incident_event(
             )
         except Exception as e:
             logger.debug(f"Slack notification failed: {e}")
+

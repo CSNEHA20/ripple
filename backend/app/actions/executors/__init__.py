@@ -17,9 +17,9 @@ def get_executor_for_action(action_kind: str) -> ActionExecutor:
     """Resolve appropriate executor based on action kind."""
     clean = action_kind.lower().strip().replace(" ", "_")
     if clean in ("notify_slack", "page_oncall", "page_team", "draft_status_update"):
-        return _DEFAULT_SLACK
+        return SlackActionExecutor()
     elif clean in ("github_rollback", "workflow_dispatch"):
-        return _DEFAULT_GITHUB
+        return GitHubDispatchExecutor()
     return _DEFAULT_SANDBOX
 
 
@@ -46,7 +46,8 @@ def execute_action(
     # Also notify Slack if configured for any approved destructive action
     if not dry_run and clean_action_is_destructive(action_kind):
         try:
-            _DEFAULT_SLACK.execute(
+            slack_exec = SlackActionExecutor()
+            slack_exec.execute(
                 graph=graph,
                 incident_id=incident_id,
                 action_id=f"notify_{action_id}",

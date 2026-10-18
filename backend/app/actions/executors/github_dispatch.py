@@ -7,6 +7,7 @@ import httpx
 from app.config import settings
 from app.tenancy import TenantGraph
 from app.actions.executors.base import ActionExecutor, ExecutionReceipt
+from app.tenant_settings import get_tenant_settings, mask_secret
 
 logger = logging.getLogger("ripple.actions.executors.github_dispatch")
 
@@ -17,13 +18,21 @@ _GITHUB_EXECUTED_KEYS: set[str] = set()
 class GitHubDispatchExecutor(ActionExecutor):
     """Triggers GitHub Actions workflow_dispatch to execute real rollback or mitigation workflows."""
 
-    def __init__(self, token: str | None = None, repo: str | None = None):
-        self.token = token or settings.github_token
-        self.repo = repo or settings.github_repo
+    def __init__(
+        self,
+        token: str | None = None,
+        repo: str | None = None,
+        workflow: str | None = None,
+        ref: str | None = None,
+    ):
+        self.token = token
+        self.repo = repo
+        self.workflow = workflow
+        self.ref = ref
 
     def execute(
         self,
-        graph: TenantGraph,
+        graph: TenantGraph | None,
         incident_id: str,
         action_id: str,
         action_kind: str,
@@ -55,14 +64,23 @@ class GitHubDispatchExecutor(ActionExecutor):
                 )
             _GITHUB_EXECUTED_KEYS.add(idempotency_key)
 
-        # 2. Refuse cleanly if repository is not configured for this tenant
-        if not self.repo or self.repo == "GoogleCloudPlatform/microservices-demo":
+        # 2. Resolve tenant-scoped integration settings
+        tenant_id = getattr(graph, "tenant_id", None)
+        t_cfg = get_tenant_settings(tenant_id, graph=graph) if graph else {}
+
+        effective_repo = self.repo or t_cfg.get("github_repo")
+        effective_token = self.token or t_cfg.get("github_token")
+        effective_workflow = self.workflow or t_cfg.get("github_workflow") or "rollback.yml"
+        effective_ref = self.ref or t_cfg.get("github_ref") or "main"
+
+        # 3. Refuse cleanly if repository is not configured for this tenant
+        if not effective_repo or (effective_repo == "GoogleCloudPlatform/microservices-demo" and not effective_token):
             details = {
                 "error": "No GitHub repository configured for this tenant. Configure repository and workflow in Integrations settings.",
                 "action_kind": action_kind,
                 "configured": False,
             }
-            logger.warning(f"[GitHubDispatchExecutor] Refused action {action_kind}: no repo configured.")
+            logger.warning(f"[GitHubDispatchExecutor] Refused action {action_kind}: no repo configured for tenant '{tenant_id}'.")
             receipt = ExecutionReceipt(
                 idempotency_key=idempotency_key,
                 action_id=action_id,
@@ -78,21 +96,26 @@ class GitHubDispatchExecutor(ActionExecutor):
             return receipt
 
         status = "executed"
-        details: dict[str, Any] = {"repo": self.repo, "workflow": "rollback.yml", "action_kind": action_kind}
+        details: dict[str, Any] = {
+            "repo": effective_repo,
+            "workflow": effective_workflow,
+            "ref": effective_ref,
+            "action_kind": action_kind,
+        }
 
-        if dry_run or not self.token:
+        if dry_run or not effective_token:
             status = "dry_run" if dry_run else "executed (simulated: no GITHUB_TOKEN)"
             details["simulated"] = True
-            logger.info(f"[GitHubDispatchExecutor] Dry-run/simulated action {action_kind} on {self.repo}: {payload}")
+            logger.info(f"[GitHubDispatchExecutor] Dry-run/simulated action {action_kind} on {effective_repo} ({effective_workflow}@{effective_ref})")
         else:
-            url = f"https://api.github.com/repos/{self.repo}/actions/workflows/rollback.yml/dispatches"
+            url = f"https://api.github.com/repos/{effective_repo}/actions/workflows/{effective_workflow}/dispatches"
             headers = {
-                "Authorization": f"Bearer {self.token}",
+                "Authorization": f"Bearer {effective_token}",
                 "Accept": "application/vnd.github+json",
                 "User-Agent": "Ripple-OnCall-Agent",
             }
             body = {
-                "ref": "main",
+                "ref": effective_ref,
                 "inputs": {
                     "service": payload.get("service", "unknown"),
                     "incident_id": incident_id,
@@ -110,6 +133,7 @@ class GitHubDispatchExecutor(ActionExecutor):
                 logger.error(f"GitHub workflow dispatch failed: {e}")
                 status = "failed"
                 details["error"] = str(e)
+
 
         receipt = ExecutionReceipt(
             idempotency_key=idempotency_key,
