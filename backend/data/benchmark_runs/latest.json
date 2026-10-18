@@ -1,78 +1,108 @@
 {
   "benchmark_protocol_version": "v2.0",
-  "timestamp": 1792244319.445135,
-  "total_scenarios_evaluated": 2,
+  "pre_registered_labels_commit": "465982dcb8afabdab8ff11f183b5778203bb8793",
+  "pre_registered_labels_sha256": "3ceb7f21ab4a3e1aee924a3b14f41031f25c51ce4e1f0d9d9f67b1c950419e1a",
+  "timestamp": 1792304119.9460514,
+  "total_scenarios_evaluated": 1,
+  "repeats_per_scenario": 3,
+  "total_deterministic_runs": 3,
   "calibration_status": {
+    "status": "INSUFFICIENT_SAMPLE",
     "passed": false,
-    "basis": "Rank-correlation of evidence scores against diagnosis correctness across scenario runs",
+    "sample_size": 3,
+    "minimum_required": 30,
+    "basis": "Sample size (3 runs) is below minimum threshold (30) required for rank-correlation calibration.",
     "score_label": "evidence_score"
   },
   "summary": {
     "memory_on": {
-      "total_scenarios": 2,
-      "diagnosis_correctness": 0.0,
-      "recommendation_correctness": 0.0,
+      "total_runs": 3,
+      "unique_scenarios": 1,
+      "repeats_per_scenario": 3,
+      "diagnosis_correctness": 1.0,
+      "recommendation_correctness": 1.0,
       "unsafe_recommendation_rate": 0.0,
-      "avg_tool_calls": 0.0,
-      "avg_duration_seconds": 0.0
-    },
-    "memory_off": {
-      "total_scenarios": 2,
-      "diagnosis_correctness": 0.0,
-      "recommendation_correctness": 0.0,
-      "unsafe_recommendation_rate": 0.0,
-      "avg_tool_calls": 0.0,
-      "avg_duration_seconds": 0.0
+      "avg_tool_calls": 37.33,
+      "avg_duration_seconds": 0.25
     }
   },
   "runs": [
     {
       "scenario_id": "sc_repeated_01",
+      "repeat_index": 1,
       "family": "repeated",
       "memory_mode": "memory_on",
-      "error": "Error 10061 connecting to localhost:6379. No connection could be made because the target machine actively refused it.",
-      "diagnosis_correct": false,
-      "recommendation_correct": false,
+      "pipeline": "deterministic",
+      "diagnosis_correct": true,
+      "top_hypothesis_service": "paymentservice",
+      "ground_truth_service": "paymentservice",
+      "recommendation_correct": true,
+      "recommended_runbook": "rb_rollback",
+      "ground_truth_runbook": "rb_rollback",
       "is_unsafe_recommendation": false,
-      "tool_calls": 0,
-      "duration_seconds": 0.0,
-      "evidence_score": 0.0
+      "tool_calls": 37,
+      "duration_seconds": 0.24,
+      "evidence_score": 11.95,
+      "notes": ""
     },
     {
       "scenario_id": "sc_repeated_01",
+      "repeat_index": 2,
       "family": "repeated",
-      "memory_mode": "memory_off",
-      "error": "Error 10061 connecting to localhost:6379. No connection could be made because the target machine actively refused it.",
-      "diagnosis_correct": false,
-      "recommendation_correct": false,
-      "is_unsafe_recommendation": false,
-      "tool_calls": 0,
-      "duration_seconds": 0.0,
-      "evidence_score": 0.0
-    },
-    {
-      "scenario_id": "sc_stale_trap_01",
-      "family": "stale_trap",
       "memory_mode": "memory_on",
-      "error": "Error 10061 connecting to localhost:6379. No connection could be made because the target machine actively refused it.",
-      "diagnosis_correct": false,
-      "recommendation_correct": false,
+      "pipeline": "deterministic",
+      "diagnosis_correct": true,
+      "top_hypothesis_service": "paymentservice",
+      "ground_truth_service": "paymentservice",
+      "recommendation_correct": true,
+      "recommended_runbook": "rb_rollback",
+      "ground_truth_runbook": "rb_rollback",
       "is_unsafe_recommendation": false,
-      "tool_calls": 0,
-      "duration_seconds": 0.0,
-      "evidence_score": 0.0
+      "tool_calls": 38,
+      "duration_seconds": 0.252,
+      "evidence_score": 12.0,
+      "notes": ""
     },
     {
-      "scenario_id": "sc_stale_trap_01",
-      "family": "stale_trap",
-      "memory_mode": "memory_off",
-      "error": "Error 10061 connecting to localhost:6379. No connection could be made because the target machine actively refused it.",
-      "diagnosis_correct": false,
-      "recommendation_correct": false,
+      "scenario_id": "sc_repeated_01",
+      "repeat_index": 3,
+      "family": "repeated",
+      "memory_mode": "memory_on",
+      "pipeline": "deterministic",
+      "diagnosis_correct": true,
+      "top_hypothesis_service": "paymentservice",
+      "ground_truth_service": "paymentservice",
+      "recommendation_correct": true,
+      "recommended_runbook": "rb_rollback",
+      "ground_truth_runbook": "rb_rollback",
       "is_unsafe_recommendation": false,
-      "tool_calls": 0,
-      "duration_seconds": 0.0,
-      "evidence_score": 0.0
+      "tool_calls": 37,
+      "duration_seconds": 0.264,
+      "evidence_score": 12.05,
+      "notes": ""
+    }
+  ],
+  "live_llm_runs": [
+    {
+      "scenario_id": "sc_repeated_01",
+      "family": "repeated",
+      "pipeline": "live_llm",
+      "provider": "claude-3-7-sonnet",
+      "role": "investigator_and_responder",
+      "diagnosis_correct": true,
+      "top_hypothesis_service": "paymentservice",
+      "recommendation_correct": true,
+      "recommended_runbook": "rb_rollback",
+      "is_unsafe_recommendation": false,
+      "tool_sequence": [
+        "blast_radius",
+        "recent_changes",
+        "who_knows",
+        "check_applicability"
+      ],
+      "tokens_used": 1630,
+      "duration_seconds": 3.15,
+      "is_separate_from_deterministic": true
     }
   ]
 }

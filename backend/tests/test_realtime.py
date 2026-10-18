@@ -1795,6 +1795,169 @@ def test_t6_admin_settings_and_test_connection_endpoints(monkeypatch):
     assert resp_unified.json()["status"] == "success"
 
 
+# ==============================================================================
+# T7: Benchmark You Can Defend Tests
+# ==============================================================================
+
+def test_t7_pre_registered_labels_integrity():
+    """T7: Pre-registered labels committed before running, >=12 scenarios across 5 families."""
+    from app.benchmark.runner import _load_ground_truth_labels, _compute_labels_sha256, PRE_REGISTERED_LABELS_COMMIT
+
+    labels_doc = _load_ground_truth_labels()
+    scenarios = labels_doc.get("scenarios", {})
+
+    # 1. At least 12 scenarios
+    assert len(scenarios) >= 12
+
+    # 2. Covers all 5 families
+    families = {meta.get("family") for meta in scenarios.values()}
+    required_families = {"repeated", "variant", "novel", "stale_trap", "misleading_memory"}
+    assert required_families.issubset(families), f"Missing families: {required_families - families}"
+
+    # 3. Commit hash and file SHA256 recorded
+    assert PRE_REGISTERED_LABELS_COMMIT == "465982dcb8afabdab8ff11f183b5778203bb8793"
+    sha = _compute_labels_sha256()
+    assert len(sha) == 64
+    assert sha != "unknown_sha256"
+
+
+def test_t7_sample_growth_and_multi_repeats():
+    """T7: 3 repeats per scenario across memory ON and OFF."""
+    from app.benchmark.runner import run_benchmark
+
+    # Run small subset with 3 repeats to verify repeat indexing and run count
+    res = run_benchmark(
+        scenarios=["sc_repeated_01", "sc_stale_trap_01"],
+        modes=["memory_on", "memory_off"],
+        repeats=3,
+        include_live_llm=False,
+    )
+
+    runs = res["runs"]
+    # 2 scenarios * 2 modes * 3 repeats = 12 runs
+    assert len(runs) == 12
+
+    # Verify repeat indices
+    rep_indices = [r["repeat_index"] for r in runs]
+    assert rep_indices.count(1) == 4
+    assert rep_indices.count(2) == 4
+    assert rep_indices.count(3) == 4
+
+    for r in runs:
+        assert r["pipeline"] == "deterministic"
+        assert "duration_seconds" in r
+        assert "evidence_score" in r
+
+
+def test_t7_calibration_guard_minimum_sample_size():
+    """T7: Calibration rank-correlation requires minimum 30 runs; otherwise reports INSUFFICIENT_SAMPLE."""
+    from app.benchmark.runner import run_benchmark
+
+    # 1. Small sample: 1 scenario * 2 modes * 1 repeat = 2 runs (< 30)
+    small_res = run_benchmark(
+        scenarios=["sc_repeated_01"],
+        modes=["memory_on", "memory_off"],
+        repeats=1,
+        include_live_llm=False,
+    )
+    calib_small = small_res["calibration_status"]
+    assert calib_small["status"] == "INSUFFICIENT_SAMPLE"
+    assert calib_small["passed"] is False
+    assert calib_small["minimum_required"] == 30
+    assert calib_small["sample_size"] == 2
+    assert "below minimum threshold" in calib_small["basis"].lower()
+
+    # 2. Defended sample: 13 scenarios * 2 modes * 3 repeats = 78 runs (>= 30)
+    full_res = run_benchmark(
+        repeats=3,
+        include_live_llm=True,
+    )
+    calib_full = full_res["calibration_status"]
+    assert calib_full["status"] == "EVALUATED"
+    assert calib_full["sample_size"] == 78
+    assert calib_full["minimum_required"] == 30
+
+
+def test_t7_live_llm_separation_and_provider_attribution():
+    """T7: Live-LLM runs kept strictly separate from deterministic runs with provider attribution."""
+    from app.benchmark.runner import run_live_llm_benchmark
+
+    live_runs = run_live_llm_benchmark(["sc_repeated_01", "sc_stale_trap_01"])
+    assert len(live_runs) == 2
+
+    for lr in live_runs:
+        assert lr["pipeline"] == "live_llm"
+        assert lr["is_separate_from_deterministic"] is True
+        assert "provider" in lr and lr["provider"] is not None
+        assert "tool_sequence" in lr and len(lr["tool_sequence"]) > 0
+        assert "tokens_used" in lr and lr["tokens_used"] > 0
+        assert "duration_seconds" in lr and lr["duration_seconds"] > 0
+
+
+def test_t7_unsafe_cases_explanation_and_retraction_in_report():
+    """T7 Acceptance: Report formally retracts +20% / passed claims, explains unsafe cases, and matches run data."""
+    from app.benchmark.report import get_latest_benchmark_report
+
+    report = get_latest_benchmark_report()
+    assert report["status"] == "success"
+    md = report["markdown_report"]
+
+    # 1. Formal retraction of preliminary n=5 claims
+    assert "Retrospective Note on Prototype Claims" in md
+    assert "Formal Retraction of Preliminary Claims" in md
+    assert "n=5" in md
+
+    # 2. Explanation of unsafe cases
+    assert "Unsafe Cases Breakdown & Explanations" in md
+    assert "sc_misleading_01" in md
+    assert "Why Memory ON was Unsafe Previously" in md
+    assert "Why Memory OFF was Unsafe Previously" in md
+    assert "Investigator Discriminatory Telemetry Probes" in md
+    assert "Context-Aware Responder Fallback" in md
+    assert "currencyservice" in md
+    assert "paymentservice" in md
+
+    # 3. Stale trap explanation
+    assert "sc_stale_trap_01" in md
+    assert "ac_cart_redis_decouple" in md
+
+    # 4. Measured effect and sample size plainly stated
+    bench = report["benchmark"]
+    total_runs = bench.get("total_deterministic_runs", len(bench.get("runs", [])))
+    assert f"n={total_runs} deterministic runs" in md
+
+    # 5. Live-LLM section separated
+    assert "Live-LLM Evaluation (Kept Strictly Separate from Deterministic Pipeline)" in md
+
+
+def test_t7_benchmark_api_endpoints():
+    """T7: Verify GET /api/benchmark/report and POST /api/benchmark/run endpoints."""
+    from fastapi.testclient import TestClient
+    from app.main import app
+
+    client = TestClient(app)
+
+    # 1. GET /api/benchmark/report
+    resp_get = client.get("/api/benchmark/report")
+    assert resp_get.status_code == 200
+    data_get = resp_get.json()
+    assert data_get["status"] == "success"
+    assert "benchmark" in data_get
+    assert "markdown_report" in data_get
+    assert len(data_get["benchmark"]["runs"]) >= 30
+
+    # 2. POST /api/benchmark/run
+    resp_post = client.post(
+        "/api/benchmark/run",
+        json={"scenarios": ["sc_repeated_01"], "modes": ["memory_on"], "mode": "replay"},
+    )
+    assert resp_post.status_code == 200
+    data_post = resp_post.json()
+    assert data_post["status"] == "success"
+    assert "runs" in data_post["data"]
+
+
+
 
 
 
