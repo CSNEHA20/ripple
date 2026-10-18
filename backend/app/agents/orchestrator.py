@@ -205,6 +205,8 @@ class IncidentOrchestrator:
         scenario_id: str | None = None,
         as_of: float | None = None,
         auto_approve: bool = False,
+        window_seconds: float | None = None,
+        poll_step_seconds: float | None = None,
     ) -> tuple[dict[str, Any], Trace]:
         """Execute incident investigation workflow through the 4-agent crew."""
         ref_ts = as_of if as_of is not None else time.time()
@@ -213,14 +215,30 @@ class IncidentOrchestrator:
         inc_id = incident_id or f"inc_{uuid.uuid4().hex[:8]}"
         trace = Trace()
 
-        # Step 1: Open Incident in FalkorDB
+        # Step 1: Pre-incident baseline extraction & Open Incident in FalkorDB
+        base_cypher = """
+        MATCH (s:Service {name: $svc})-[:HAD_METRIC]->(m:MetricSnapshot)
+        WHERE m.ts <= $opened_ts AND (m.error_rate IS NULL OR m.error_rate <= 0.05)
+        RETURN m.latency_p95_ms, m.error_rate ORDER BY m.ts DESC LIMIT 1
+        """
+        base_res = graph.query(base_cypher, {"svc": service_name, "opened_ts": ref_ts})
+        if not (base_res and base_res.result_set):
+            base_res = graph.query(
+                "MATCH (s:Service {name: $svc})-[:HAD_METRIC]->(m:MetricSnapshot) RETURN m.latency_p95_ms, m.error_rate ORDER BY m.ts DESC LIMIT 1",
+                {"svc": service_name},
+            )
+        base_lat = float(base_res.result_set[0][0]) if (base_res and base_res.result_set and base_res.result_set[0][0] is not None) else 25.0
+        base_err = float(base_res.result_set[0][1]) if (base_res and base_res.result_set and base_res.result_set[0][1] is not None) else 0.0
+
         cypher = """
         MERGE (i:Incident {id: $id})
         SET i.title = $title,
             i.service_name = $service_name,
             i.scenario_id = $scenario_id,
             i.opened_ts = $opened_ts,
-            i.status = 'investigating'
+            i.status = 'investigating',
+            i.baseline_latency_p95_ms = $base_lat,
+            i.baseline_error_rate = $base_err
         WITH i
         MATCH (s:Service {name: $service_name})
         MERGE (i)-[:AFFECTED {role: 'root'}]->(s)
@@ -231,6 +249,8 @@ class IncidentOrchestrator:
             "service_name": service_name,
             "scenario_id": scenario_id or "",
             "opened_ts": ref_ts,
+            "base_lat": base_lat,
+            "base_err": base_err,
         })
         event_bus.set_incident_tenant(inc_id, graph.tenant_id)
         event_bus.publish(inc_id, "incident_opened", {
@@ -372,13 +392,21 @@ class IncidentOrchestrator:
                 verify_task=verify_task,
                 scenario_id=scenario_id,
                 as_of=ref_ts,
+                window_seconds=window_seconds,
+                poll_step_seconds=poll_step_seconds,
             )
             trace.merge(verifier_trace)
-            final_status = verifier_out.get("status", "resolved")
-            graph.query(
-                "MATCH (i:Incident {id: $id}) SET i.status = $status, i.resolved_ts = $ts",
-                {"id": inc_id, "status": final_status, "ts": time.time()},
-            )
+            final_status = verifier_out.get("status", "inconclusive")
+            if final_status == "resolved":
+                graph.query(
+                    "MATCH (i:Incident {id: $id}) SET i.status = $status, i.resolved_ts = $ts",
+                    {"id": inc_id, "status": final_status, "ts": time.time()},
+                )
+            else:
+                graph.query(
+                    "MATCH (i:Incident {id: $id}) SET i.status = $status",
+                    {"id": inc_id, "status": final_status},
+                )
             event_bus.publish(inc_id, "outcome_verified", {
                 "observed_outcome": verifier_out["observed_outcome"],
                 "metrics_summary": verifier_out["metrics_summary"],
@@ -418,6 +446,8 @@ class IncidentOrchestrator:
         approver: str = "operator",
         scenario_id: str | None = None,
         as_of: float | None = None,
+        window_seconds: float | None = None,
+        poll_step_seconds: float | None = None,
     ) -> tuple[dict[str, Any], Trace]:
         """Approve a pending action and resume the crew by running the Verifier Agent."""
         trace = Trace()
@@ -450,14 +480,22 @@ class IncidentOrchestrator:
             verify_task=verify_task,
             scenario_id=scenario_id,
             as_of=ref_ts,
+            window_seconds=window_seconds,
+            poll_step_seconds=poll_step_seconds,
         )
         trace.merge(ver_trace)
 
-        status = ver_out.get("status", "resolved")
-        graph.query(
-            "MATCH (i:Incident {id: $id}) SET i.status = $status, i.resolved_ts = $ts",
-            {"id": incident_id, "status": status, "ts": time.time()},
-        )
+        status = ver_out.get("status", "inconclusive")
+        if status == "resolved":
+            graph.query(
+                "MATCH (i:Incident {id: $id}) SET i.status = $status, i.resolved_ts = $ts",
+                {"id": incident_id, "status": status, "ts": time.time()},
+            )
+        else:
+            graph.query(
+                "MATCH (i:Incident {id: $id}) SET i.status = $status",
+                {"id": incident_id, "status": status},
+            )
         event_bus.publish(incident_id, "outcome_verified", {
             "observed_outcome": ver_out["observed_outcome"],
             "metrics_summary": ver_out["metrics_summary"],

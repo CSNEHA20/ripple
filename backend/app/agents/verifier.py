@@ -49,6 +49,8 @@ class VerifierAgent:
         verify_task: dict[str, Any],
         scenario_id: str | None = None,
         as_of: float | None = None,
+        window_seconds: float | None = None,
+        poll_step_seconds: float | None = None,
     ) -> tuple[dict[str, Any], Trace]:
         trace = Trace()
         ref_ts = as_of if as_of is not None else time.time()
@@ -71,33 +73,97 @@ class VerifierAgent:
             update_task_status(graph, task_id, "in_progress")
 
         # 2. Check post-intervention metrics via real telemetry adapter polling window
-        observed = "resolved"
-        metrics_after = {}
-        explanation = "Service returned to normal operating parameters."
-
+        import httpx
         from app.adapters.resolver import get_adapter
         from app.adapters.demo_target import get_demo_target_state
+        from app.adapters.prometheus import PrometheusConnectionError
+        from app.tenant_settings import get_tenant_settings
         from app.config import settings
 
-        # Query baseline metrics prior to action from graph
-        base_cypher = """
-        MATCH (s:Service {name: $svc})-[:HAD_METRIC]->(m:MetricSnapshot)
-        RETURN m.latency_p95_ms, m.error_rate ORDER BY m.ts DESC LIMIT 1
-        """
-        base_res = graph.query(base_cypher, {"svc": target_service})
-        base_lat = float(base_res.result_set[0][0]) if (base_res and base_res.result_set) else 25.0
-        base_err = float(base_res.result_set[0][1]) if (base_res and base_res.result_set) else 0.0
+        # Query baseline metrics stored on the Incident node
+        inc_base_res = graph.query(
+            "MATCH (i:Incident {id: $iid}) RETURN i.baseline_latency_p95_ms, i.baseline_error_rate",
+            {"iid": incident_id},
+        )
+        base_lat = None
+        base_err = None
+        if inc_base_res and inc_base_res.result_set:
+            row = inc_base_res.result_set[0]
+            if row[0] is not None:
+                base_lat = float(row[0])
+            if row[1] is not None:
+                base_err = float(row[1])
 
+        # If not present on incident, fall back to service's healthy metric snapshot and persist on incident
+        if base_lat is None or base_err is None:
+            base_cypher = """
+            MATCH (s:Service {name: $svc})-[:HAD_METRIC]->(m:MetricSnapshot)
+            RETURN m.latency_p95_ms, m.error_rate ORDER BY m.ts DESC LIMIT 1
+            """
+            base_res = graph.query(base_cypher, {"svc": target_service})
+            base_lat = float(base_res.result_set[0][0]) if (base_res and base_res.result_set and base_res.result_set[0][0] is not None) else 25.0
+            base_err = float(base_res.result_set[0][1]) if (base_res and base_res.result_set and base_res.result_set[0][1] is not None) else 0.0
+            graph.query(
+                "MATCH (i:Incident {id: $iid}) SET i.baseline_latency_p95_ms = $lat, i.baseline_error_rate = $err",
+                {"iid": incident_id, "lat": base_lat, "err": base_err},
+            )
+
+        tenant_cfg = get_tenant_settings(graph.tenant_id)
+        active_source = (tenant_cfg.get("telemetry_source") or settings.telemetry_source or "simulator").lower().strip()
         demo_state = get_demo_target_state().get(target_service.lower(), {})
-        if settings.telemetry_source in ("prometheus", "demo_target") or (demo_state and demo_state.get("broken") is not None):
+
+        # Resolve polling window parameters
+        win_sec = (
+            window_seconds
+            if window_seconds is not None
+            else float(tenant_cfg.get("verification_window_seconds") or settings.verification_window_seconds or 60.0)
+        )
+        step_sec = (
+            poll_step_seconds
+            if poll_step_seconds is not None
+            else float(tenant_cfg.get("verification_poll_step_seconds") or settings.verification_poll_step_seconds or 10.0)
+        )
+        step_sec = max(0.005, step_sec)
+        num_samples = max(1, int(round(win_sec / step_sec)))
+
+        # Default to inconclusive (remove default-resolved paths)
+        observed = "inconclusive"
+        metrics_after = {}
+        explanation = "Verification inconclusive: no telemetry or simulator data available for target service."
+
+        is_demo_target = active_source == "demo_target" or (demo_state and demo_state.get("broken") is not None)
+        is_prometheus = active_source == "prometheus"
+
+        if is_prometheus or is_demo_target:
             from app.agents.orchestrator import event_bus
-            adapter = get_adapter(graph.tenant_id)
+            if is_prometheus:
+                adapter = get_adapter(graph.tenant_id)
+            else:
+                from app.adapters.demo_target import DemoTargetAdapter
+                adapter = DemoTargetAdapter()
             samples = []
-            for sample_idx in range(1, 4):
-                time.sleep(0.05)
-                rec = adapter.check_health(target_service, ref_ts=ref_ts)
+            telemetry_failed = False
+            telemetry_error_msg = ""
+
+            for sample_idx in range(1, num_samples + 1):
+                if sample_idx > 1 and step_sec > 0:
+                    time.sleep(step_sec)
+                try:
+                    rec = adapter.check_health(target_service, ref_ts=ref_ts)
+                except (PrometheusConnectionError, ConnectionError, httpx.HTTPError, RuntimeError, Exception) as e:
+                    logger.warning(f"Telemetry check_health failed for {target_service}: {e}")
+                    telemetry_failed = True
+                    telemetry_error_msg = str(e)
+                    break
+
+                if rec.source == "no data":
+                    telemetry_failed = True
+                    telemetry_error_msg = "Telemetry source returned no data."
+                    break
+
                 s_data = {
                     "sample": sample_idx,
+                    "total_samples": num_samples,
                     "service": target_service,
                     "latency_p95_ms": rec.latency_p95_ms,
                     "error_rate": rec.error_rate,
@@ -111,37 +177,69 @@ class VerifierAgent:
                 except Exception:
                     pass
 
-            mean_err = sum(s["error_rate"] for s in samples) / len(samples)
-            mean_lat = sum(s["latency_p95_ms"] for s in samples) / len(samples)
-
-            if mean_err <= 0.02 and mean_lat <= 500.0:
-                observed = "resolved"
-                explanation = f"Service health normalized across {len(samples)} validation samples: error rate dropped to {mean_err:.1%} (baseline: {base_err:.1%}), p95 latency stabilized at {mean_lat:.1f}ms."
-            elif mean_err >= 0.15 or mean_lat >= 1500.0:
-                observed = "failed"
-                explanation = f"Intervention failed to restore service: error rate remained elevated at {mean_err:.1%} across {len(samples)} validation samples (threshold: <2.0%)."
+            if telemetry_failed or not samples:
+                observed = "inconclusive"
+                explanation = f"Verification inconclusive: telemetry source unreachable or returned no data ({telemetry_error_msg or 'no samples'})."
+                metrics_after = {
+                    "samples": samples,
+                    "samples_count": len(samples),
+                    "baseline_latency_p95": base_lat,
+                    "baseline_error_rate": base_err,
+                    "source": "unreachable",
+                    "error": telemetry_error_msg,
+                }
             else:
-                observed = "partial"
-                explanation = f"Partial recovery observed across {len(samples)} validation samples: error rate decreased to {mean_err:.1%}, but p95 latency remains degraded at {mean_lat:.1f}ms."
+                mean_err = sum(s["error_rate"] for s in samples) / len(samples)
+                mean_lat = sum(s["latency_p95_ms"] for s in samples) / len(samples)
 
-            metrics_after = {
-                "samples": samples,
-                "samples_count": len(samples),
-                "baseline_latency_p95": base_lat,
-                "baseline_error_rate": base_err,
-                "observed_latency_p95": round(mean_lat, 2),
-                "observed_error_rate": round(mean_err, 4),
-                "source": samples[0]["source"],
-            }
+                # Relative recovery against baseline with absolute floors
+                resolved_err_thresh = max(0.02, base_err * 1.20)
+                resolved_lat_thresh = max(200.0, base_lat * 1.20)
+                failed_err_thresh = max(0.15, base_err * 2.0)
+                failed_lat_thresh = max(1000.0, base_lat * 3.0)
+
+                if mean_err <= resolved_err_thresh and mean_lat <= resolved_lat_thresh:
+                    observed = "resolved"
+                    explanation = (
+                        f"Service health normalized across {len(samples)} validation samples: "
+                        f"error rate dropped to {mean_err:.1%} (baseline: {base_err:.1%}, threshold: {resolved_err_thresh:.1%}), "
+                        f"p95 latency stabilized at {mean_lat:.1f}ms (baseline: {base_lat:.1f}ms, threshold: {resolved_lat_thresh:.1f}ms)."
+                    )
+                elif mean_err >= failed_err_thresh or mean_lat >= failed_lat_thresh:
+                    observed = "failed"
+                    explanation = (
+                        f"Intervention failed to restore service: "
+                        f"error rate remained elevated at {mean_err:.1%} across {len(samples)} validation samples "
+                        f"(threshold: <{resolved_err_thresh:.1%}, fail threshold: >={failed_err_thresh:.1%}) "
+                        f"or latency degraded at {mean_lat:.1f}ms."
+                    )
+                else:
+                    observed = "partial"
+                    explanation = (
+                        f"Partial recovery observed across {len(samples)} validation samples: "
+                        f"error rate decreased to {mean_err:.1%}, but p95 latency remains degraded at {mean_lat:.1f}ms."
+                    )
+
+                metrics_after = {
+                    "samples": samples,
+                    "samples_count": len(samples),
+                    "baseline_latency_p95": base_lat,
+                    "baseline_error_rate": base_err,
+                    "observed_latency_p95": round(mean_lat, 2),
+                    "observed_error_rate": round(mean_err, 4),
+                    "source": samples[0]["source"],
+                }
         elif scenario_id:
             try:
                 sim_result = sim_apply_intervention(scenario_id=scenario_id, runbook_id=runbook_id)
-                observed = sim_result.get("observed", "resolved")
+                observed = sim_result.get("observed", "inconclusive")
                 metrics_after = sim_result.get("metrics_after", {})
                 explanation = sim_result.get("explanation", explanation)
             except Exception as e:
-                logger.warning(f"Simulator apply_intervention error: {e}. Defaulting to resolved.")
-
+                logger.warning(f"Simulator apply_intervention error: {e}. Setting outcome to inconclusive.")
+                observed = "inconclusive"
+                explanation = f"Verification inconclusive: simulator error ({e})."
+                metrics_after = {"error": str(e), "source": "simulator_error"}
 
         # 3. Record observed Outcome in graph memory
         outcome_record = None
@@ -164,7 +262,7 @@ class VerifierAgent:
         )
         winning_hyp_id = hyp_res.result_set[0][0] if (hyp_res and hyp_res.result_set) else f"hyp_{target_service}"
 
-        # 5. Close incident in episodic memory (links ROOT_CAUSE)
+        # 5. Close incident in episodic memory ONLY IF verified outcome is 'resolved'
         closed_inc = None
         if observed == "resolved":
             try:
@@ -237,6 +335,15 @@ class VerifierAgent:
         # 9. Complete AgentRun
         complete_agent_run(graph=graph, run_id=agent_run["id"], status="completed", summary=llm_out.summary)
 
+        if observed == "resolved":
+            final_status = "resolved"
+        elif observed == "failed":
+            final_status = "failed"
+        elif observed == "partial":
+            final_status = "partial"
+        else:
+            final_status = "inconclusive"
+
         result = {
             "agent_run_id": agent_run["id"],
             "incident_id": incident_id,
@@ -246,6 +353,6 @@ class VerifierAgent:
             "closed_incident": closed_inc,
             "observation_id": obs["id"],
             "summary": llm_out.summary,
-            "status": "resolved" if observed == "resolved" else "partially_resolved",
+            "status": final_status,
         }
         return result, trace

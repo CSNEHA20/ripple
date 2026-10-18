@@ -741,5 +741,265 @@ def test_key_management_api_endpoints():
     assert r_fail.status_code == 401
 
 
+# ==============================================================================
+# T4: Verification you can trust tests
+# ==============================================================================
+
+
+class MockGraphResult:
+    def __init__(self, result_set):
+        self.result_set = result_set
+
+
+class MockVerifierTenantGraph:
+    def __init__(self, tenant_id: str = "storefront", base_lat: float = 25.0, base_err: float = 0.0):
+        self.tenant_id = tenant_id
+        self.base_lat = base_lat
+        self.base_err = base_err
+        self.runbook_counts = {"rb_rollback": {"success": 5.0, "fail": 1.0}}
+        self.closed = False
+        self.incident_status = "investigating"
+        self.queries = []
+
+    def query(self, cypher: str, params=None):
+        params = params or {}
+        self.queries.append((cypher, params))
+        clean = " ".join(cypher.split())
+
+        if "RETURN i.baseline_latency_p95_ms, i.baseline_error_rate" in clean:
+            return MockGraphResult([[self.base_lat, self.base_err]])
+        elif "HAD_METRIC" in clean:
+            return MockGraphResult([[self.base_lat, self.base_err]])
+        elif "MATCH (intv:Intervention {id: $id})" in clean:
+            return MockGraphResult([["intv_01", "rb_rollback", "resolved", "inc_01"]])
+        elif "MATCH (rb:Runbook {id: $id})" in clean:
+            rb_id = params.get("id", "rb_rollback")
+            counts = self.runbook_counts.get(rb_id, {"success": 0.0, "fail": 0.0})
+            return MockGraphResult([[rb_id, rb_id, counts["success"], counts["fail"]]])
+        elif "MERGE (rb:Runbook {id: $id})" in clean and "SET rb.title" in clean:
+            rb_id = params.get("id", "rb_rollback")
+            if rb_id not in self.runbook_counts:
+                self.runbook_counts[rb_id] = {"success": 0.0, "fail": 0.0}
+            self.runbook_counts[rb_id]["success"] = float(params.get("success_count", self.runbook_counts[rb_id]["success"]))
+            self.runbook_counts[rb_id]["fail"] = float(params.get("fail_count", self.runbook_counts[rb_id]["fail"]))
+            return MockGraphResult([])
+        elif "HAS_HYPOTHESIS" in clean:
+            return MockGraphResult([["hyp_paymentservice"]])
+        elif "MATCH (h:Hypothesis {id: $hyp_id})" in clean:
+            return MockGraphResult([["hyp_paymentservice", "Bad deployment on paymentservice", "paymentservice"]])
+        elif "SET i.status = 'closed'" in clean:
+            self.closed = True
+            self.incident_status = "closed"
+            return MockGraphResult([])
+        elif "SET i.status = $status" in clean:
+            self.incident_status = params.get("status", self.incident_status)
+            return MockGraphResult([])
+        return MockGraphResult([])
+
+
+def test_t4_real_window_publishing_and_correct_fix_resolves():
+    """T4 Acceptance: A correct fix on the demo target resolves after the verification window,
+    publishes verification_sample events as they arrive, updates procedural memory,
+    and closes the incident in episodic memory.
+    """
+    from app.agents.verifier import VerifierAgent
+    from app.agents.orchestrator import event_bus
+    from app.adapters.demo_target import break_service, restore_service
+
+    graph = MockVerifierTenantGraph(tenant_id="storefront_t4_pass", base_lat=25.0, base_err=0.0)
+
+    # 1. Break demo target service
+    break_service("paymentservice", latency_ms=1750.0, error_rate=0.45)
+    # 2. Simulate correct fix: service is restored
+    restore_service("paymentservice")
+
+    published_samples = []
+    original_publish = event_bus.publish
+
+    def spy_publish(inc_id, event_type, data):
+        if event_type == "verification_sample":
+            published_samples.append(data)
+        return original_publish(inc_id, event_type, data)
+
+    event_bus.publish = spy_publish
+
+    try:
+        verifier = VerifierAgent(mode="replay")
+        verify_task = {
+            "id": "task_v_01",
+            "payload": {
+                "intervention_id": "intv_01",
+                "runbook_id": "rb_rollback",
+                "target_service": "paymentservice",
+            },
+        }
+
+        # Run with window of 0.15s and step of 0.03s -> 5 samples
+        result, trace = verifier.run(
+            graph=graph,
+            incident_id="inc_t4_01",
+            verify_task=verify_task,
+            window_seconds=0.15,
+            poll_step_seconds=0.03,
+        )
+
+        # Assertions
+        assert result["observed_outcome"] == "resolved"
+        assert result["status"] == "resolved"
+        assert result["closed_incident"] is not None
+        assert graph.closed is True
+        # Procedural memory updated: success count incremented from 5.0 to 6.0
+        assert graph.runbook_counts["rb_rollback"]["success"] == 6.0
+        assert graph.runbook_counts["rb_rollback"]["fail"] == 1.0
+
+        # Samples published to event_bus in real-time
+        assert len(published_samples) == 5
+        for s in published_samples:
+            assert s["service"] == "paymentservice"
+            assert s["source"] == "demo_target"
+            assert s["error_rate"] <= 0.02
+            assert s["latency_p95_ms"] <= 200.0
+    finally:
+        event_bus.publish = original_publish
+        restore_service("paymentservice")
+
+
+def test_t4_wrong_fix_fails_after_window_and_updates_fail_count():
+    """T4 Acceptance: A wrong fix on the demo target fails after the window,
+    updates procedural memory with failure, and does NOT close the incident.
+    """
+    from app.agents.verifier import VerifierAgent
+    from app.adapters.demo_target import break_service, restore_service
+
+    graph = MockVerifierTenantGraph(tenant_id="storefront_t4_fail", base_lat=25.0, base_err=0.0)
+
+    # 1. Break demo target service and do NOT heal (wrong fix applied)
+    break_service("paymentservice", latency_ms=1850.0, error_rate=0.42)
+
+    try:
+        verifier = VerifierAgent(mode="replay")
+        verify_task = {
+            "id": "task_v_02",
+            "payload": {
+                "intervention_id": "intv_01",
+                "runbook_id": "rb_rollback",
+                "target_service": "paymentservice",
+            },
+        }
+
+        result, trace = verifier.run(
+            graph=graph,
+            incident_id="inc_t4_02",
+            verify_task=verify_task,
+            window_seconds=0.15,
+            poll_step_seconds=0.03,
+        )
+
+        # Assertions
+        assert result["observed_outcome"] == "failed"
+        assert result["status"] == "failed"
+        assert result["closed_incident"] is None
+        assert graph.closed is False
+        # Procedural memory: fail count incremented from 1.0 to 2.0; success count unchanged
+        assert graph.runbook_counts["rb_rollback"]["fail"] == 2.0
+        assert graph.runbook_counts["rb_rollback"]["success"] == 5.0
+    finally:
+        restore_service("paymentservice")
+
+
+def test_t4_prometheus_down_inconclusive_and_memory_unchanged():
+    """T4 Acceptance: With Prometheus down or unreachable, the outcome is inconclusive,
+    the incident is NOT closed, and procedural memory counters are unchanged.
+    """
+    from app.agents.verifier import VerifierAgent
+    from app.tenant_settings import update_tenant_settings
+    from app.adapters.demo_target import restore_service
+
+    # Ensure demo target is clean
+    restore_service("paymentservice")
+
+    tenant_id = "tenant_prom_unreachable"
+    # Point tenant to unreachable port
+    update_tenant_settings(tenant_id, {"telemetry_source": "prometheus", "prometheus_url": "http://127.0.0.1:59997"})
+
+    graph = MockVerifierTenantGraph(tenant_id=tenant_id, base_lat=25.0, base_err=0.0)
+    init_success = graph.runbook_counts["rb_rollback"]["success"]
+    init_fail = graph.runbook_counts["rb_rollback"]["fail"]
+
+    verifier = VerifierAgent(mode="replay")
+    verify_task = {
+        "id": "task_v_03",
+        "payload": {
+            "intervention_id": "intv_01",
+            "runbook_id": "rb_rollback",
+            "target_service": "paymentservice",
+        },
+    }
+
+    result, trace = verifier.run(
+        graph=graph,
+        incident_id="inc_t4_03",
+        verify_task=verify_task,
+        window_seconds=0.10,
+        poll_step_seconds=0.02,
+    )
+
+    # Assertions
+    assert result["observed_outcome"] == "inconclusive"
+    assert result["status"] == "inconclusive"
+    assert "telemetry source unreachable" in result["metrics_summary"] or "inconclusive" in result["metrics_summary"].lower()
+    assert result["closed_incident"] is None
+    assert graph.closed is False
+
+    # Procedural memory counters are COMPLETELY UNCHANGED
+    assert graph.runbook_counts["rb_rollback"]["success"] == init_success
+    assert graph.runbook_counts["rb_rollback"]["fail"] == init_fail
+
+
+def test_t4_relative_baseline_comparison_with_floors():
+    """T4: Ensure baseline comparison enforces +20% relative tolerance with absolute floors."""
+    from app.agents.verifier import VerifierAgent
+    from app.adapters.demo_target import restore_service
+
+    # Test case A: High-baseline service (baseline latency 250ms, baseline error 0.05)
+    # resolved floors: max(200.0, 250*1.20) = 300.0ms; max(0.02, 0.05*1.20) = 0.06
+    # An observed error of 0.0 and latency ~20ms qualifies as resolved
+    graph_high = MockVerifierTenantGraph(tenant_id="storefront_high_base", base_lat=250.0, base_err=0.05)
+    restore_service("paymentservice")
+
+    verifier = VerifierAgent(mode="replay")
+    verify_task = {
+        "id": "task_v_high",
+        "payload": {
+            "intervention_id": "intv_01",
+            "runbook_id": "rb_rollback",
+            "target_service": "paymentservice",
+        },
+    }
+
+    res_high, _ = verifier.run(
+        graph=graph_high,
+        incident_id="inc_t4_high",
+        verify_task=verify_task,
+        window_seconds=0.05,
+        poll_step_seconds=0.01,
+    )
+    assert res_high["observed_outcome"] == "resolved"
+
+    # Test case B: Zero baseline service (0ms, 0% error)
+    # Absolute floors must apply (latency_floor=200ms, error_floor=0.02)
+    # instead of dividing by zero or requiring impossible 0.000ms
+    graph_zero = MockVerifierTenantGraph(tenant_id="storefront_zero_base", base_lat=0.0, base_err=0.0)
+    res_zero, _ = verifier.run(
+        graph=graph_zero,
+        incident_id="inc_t4_zero",
+        verify_task=verify_task,
+        window_seconds=0.05,
+        poll_step_seconds=0.01,
+    )
+    assert res_zero["observed_outcome"] == "resolved"
+
+
+
 
 

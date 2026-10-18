@@ -132,29 +132,34 @@ def reset_metrics() -> None:
             _init_service_counters(svc, st)
 
 
-def break_service(service: str, reason: str = "Connection pool exhaustion") -> dict[str, Any]:
+def break_service(
+    service: str,
+    reason: str = "Connection pool exhaustion",
+    error_rate: float | None = None,
+    latency_ms: float | None = None,
+) -> dict[str, Any]:
     """Inject failure into demo target service."""
     svc = service.lower().strip()
     if svc not in DEMO_TARGET_STATE:
         DEMO_TARGET_STATE[svc] = {}
 
-    err_rate = 0.68
-    lat_ms = 2450.0
-    if reason == "error_rate":
+    err_rate = error_rate if error_rate is not None else 0.68
+    lat = latency_ms if latency_ms is not None else 2450.0
+    if reason == "error_rate" and error_rate is None:
         err_rate = 0.68
-        lat_ms = 45.0
-    elif reason == "latency_p95":
+        lat = 45.0
+    elif reason == "latency_p95" and latency_ms is None:
         err_rate = 0.05
-        lat_ms = 2450.0
+        lat = 2450.0
 
     DEMO_TARGET_STATE[svc] = {
         "broken": True,
         "error_rate": err_rate,
-        "latency_ms": lat_ms,
+        "latency_ms": lat,
         "break_reason": reason,
         "broken_at": time.time(),
     }
-    logger.info(f"[DemoTarget] Service '{svc}' BROKEN: {reason} (error_rate={err_rate}, latency={lat_ms}ms)")
+    logger.info(f"[DemoTarget] Service '{svc}' BROKEN: {reason} (error_rate={err_rate}, latency={lat}ms)")
     return {"service": svc, "state": DEMO_TARGET_STATE[svc]}
 
 

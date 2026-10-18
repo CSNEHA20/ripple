@@ -1132,12 +1132,16 @@ class IncidentRunRequest(BaseModel):
     mode: str = "replay"
     auto_approve: bool = False
     sync: bool | None = None
+    verification_window_seconds: float | None = None
+    verification_poll_step_seconds: float | None = None
 
 
 class ActionApprovalRequest(BaseModel):
     approver: str = "operator"
     scenario_id: str | None = None
     as_of: float | None = None
+    verification_window_seconds: float | None = None
+    verification_poll_step_seconds: float | None = None
 
 
 class ActionRejectionRequest(BaseModel):
@@ -1204,6 +1208,8 @@ def api_run_incident_crew(
                     scenario_id=req.scenario_id,
                     as_of=req.as_of,
                     auto_approve=req.auto_approve,
+                    window_seconds=req.verification_window_seconds,
+                    poll_step_seconds=req.verification_poll_step_seconds,
                 )
 
             background_tasks.add_task(_run_bg)
@@ -1225,6 +1231,8 @@ def api_run_incident_crew(
             scenario_id=req.scenario_id,
             as_of=req.as_of,
             auto_approve=req.auto_approve,
+            window_seconds=req.verification_window_seconds,
+            poll_step_seconds=req.verification_poll_step_seconds,
         )
         return {
             "status": "success",
@@ -1364,6 +1372,8 @@ def api_approve_incident_action(
                 approver=effective_approver,
                 scenario_id=req.scenario_id,
                 as_of=req.as_of,
+                window_seconds=req.verification_window_seconds,
+                poll_step_seconds=req.verification_poll_step_seconds,
             )
             return {
                 "status": "success",
@@ -1386,6 +1396,8 @@ def api_approve_incident_action(
                 approver=effective_approver,
                 scenario_id=req.scenario_id,
                 as_of=req.as_of,
+                window_seconds=req.verification_window_seconds,
+                poll_step_seconds=req.verification_poll_step_seconds,
             )
         except Exception as e:
             logger.error(f"Background action approval/verification failed: {e}")

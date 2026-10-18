@@ -85,8 +85,8 @@ def record_observed_outcome(
     Failed fixes become permanent first-class memories that will be recalled by future agents.
     """
     clean_obs = observed.strip().lower()
-    if clean_obs not in ("resolved", "failed", "partial"):
-        raise ValueError(f"Invalid outcome '{observed}'. Must be 'resolved', 'failed', or 'partial'.")
+    if clean_obs not in ("resolved", "failed", "partial", "inconclusive"):
+        raise ValueError(f"Invalid outcome '{observed}'. Must be 'resolved', 'failed', 'partial', or 'inconclusive'.")
 
     # Fetch intervention metadata
     fetch_cypher = """
@@ -102,7 +102,10 @@ def record_observed_outcome(
     predicted = (predicted_outcome or "resolved").lower()
 
     # Determine validation result and prediction error
-    if clean_obs == predicted:
+    if clean_obs == "inconclusive":
+        result = "inconclusive"
+        prediction_error = False
+    elif clean_obs == predicted:
         result = "validates"
         prediction_error = False
     elif predicted == "resolved" and clean_obs == "failed":
@@ -152,8 +155,10 @@ def record_observed_outcome(
         "ts": ts,
     })
 
-    # Update runbook procedural counters
-    procedural_update = record_runbook_outcome(graph=graph, runbook_id=rb_id, outcome=clean_obs)
+    # Update runbook procedural counters ONLY for conclusive outcomes (resolved, partial, failed)
+    procedural_update = None
+    if clean_obs in ("resolved", "failed", "partial"):
+        procedural_update = record_runbook_outcome(graph=graph, runbook_id=rb_id, outcome=clean_obs)
 
     return {
         "outcome_id": out_id,

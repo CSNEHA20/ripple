@@ -77,6 +77,8 @@ class Settings(BaseSettings):
     api_key_header: str = "X-API-Key"
     auth_dev_mode: bool = False
     api_keys_seed_file: str = "data/api_keys_seed.json"
+    verification_window_seconds: float = 60.0
+    verification_poll_step_seconds: float = 10.0
 
     model_config = SettingsConfigDict(
         env_file=".env",
