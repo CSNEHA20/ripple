@@ -9,8 +9,10 @@ from app.adapters.demo_target import (
     restore_service,
     get_service_state,
     generate_prometheus_metrics_text,
+    DemoTargetAdapter,
+    simulate_traffic_tick,
 )
-from app.adapters.prometheus import PrometheusAdapter
+from app.adapters.prometheus import PrometheusAdapter, PrometheusConnectionError
 
 
 def test_webhook_hmac_signature_verification():
@@ -86,12 +88,19 @@ def test_demo_target_fault_injection_and_metrics():
     assert "http_request_duration_seconds" in metrics_text
     assert 'service="paymentservice"' in metrics_text
 
-    # 3. Prometheus adapter query (fallback to demo target is honestly tagged 'demo_target')
-    adapter = PrometheusAdapter()
-    metrics = adapter.fetch_metrics(["paymentservice"], window_minutes=5.0)
+    # 3. DemoTargetAdapter query (honestly tagged 'demo_target')
+    demo_adapter = DemoTargetAdapter()
+    metrics = demo_adapter.fetch_metrics(["paymentservice"], window_minutes=5.0)
     assert metrics[0].latency_p95_ms > 1000.0
     assert metrics[0].error_rate > 0.5
     assert metrics[0].source == "demo_target"
+
+    # Prometheus adapter with fallback_to_demo returns demo_target
+    prom_fb = PrometheusAdapter(fallback_to_demo=True)
+    m_fb = prom_fb.fetch_metrics(["paymentservice"], window_minutes=5.0)
+    assert m_fb[0].latency_p95_ms > 1000.0
+    assert m_fb[0].error_rate > 0.5
+    assert m_fb[0].source == "demo_target"
 
     # 4. Restore service
     restore_service("paymentservice")
@@ -258,4 +267,162 @@ def test_integration_settings_and_system_status():
     s_data = settings_resp.json()
     assert s_data["tenant_id"] == "storefront"
     assert "prometheus_url" in s_data
+
+
+def test_demo_target_traffic_simulator_monotonic_increment():
+    from app.adapters.demo_target import (
+        _METRICS_COUNTERS,
+        simulate_traffic_tick,
+        break_service,
+        restore_service,
+        generate_prometheus_metrics_text,
+    )
+
+    # 1. Service healthy: tick increments requests_200 and buckets
+    restore_service("cartservice")
+    initial_200 = _METRICS_COUNTERS["cartservice"]["requests_200"]
+    initial_count = _METRICS_COUNTERS["cartservice"]["duration_count"]
+
+    simulate_traffic_tick(delta_seconds=1.0)
+    after_healthy_200 = _METRICS_COUNTERS["cartservice"]["requests_200"]
+    after_healthy_count = _METRICS_COUNTERS["cartservice"]["duration_count"]
+
+    assert after_healthy_200 > initial_200
+    assert after_healthy_count > initial_count
+
+    # 2. Break service: tick increments requests_500
+    break_service("cartservice", reason="error_rate")
+    healthy_500 = _METRICS_COUNTERS["cartservice"]["requests_500"]
+    simulate_traffic_tick(delta_seconds=1.0)
+    after_broken_500 = _METRICS_COUNTERS["cartservice"]["requests_500"]
+    assert after_broken_500 > healthy_500
+
+    # 3. Format text validation
+    text = generate_prometheus_metrics_text()
+    assert 'http_requests_total{service="cartservice",status="500"}' in text
+    assert 'http_request_duration_seconds_bucket{service="cartservice",le="+Inf"}' in text
+
+    restore_service("cartservice")
+
+
+def test_prometheus_adapter_up_returns_real_metrics(monkeypatch):
+    import httpx
+    from app.adapters.prometheus import PrometheusAdapter
+
+    def mock_get(url, params=None, **kwargs):
+        class MockResponse:
+            status_code = 200
+            text = "ok"
+            def json(self):
+                q = (params or {}).get("query", "")
+                if "http_request_duration_seconds" in q:
+                    return {
+                        "status": "success",
+                        "data": {
+                            "result": [
+                                {
+                                    "metric": {"service": "paymentservice"},
+                                    "value": [1700000000, "1.850"],
+                                }
+                            ]
+                        },
+                    }
+                elif "http_requests_total" in q:
+                    return {
+                        "status": "success",
+                        "data": {
+                            "result": [
+                                {
+                                    "metric": {"service": "paymentservice"},
+                                    "value": [1700000000, "0.420"],
+                                }
+                            ]
+                        },
+                    }
+                return {"status": "success", "data": {"result": []}}
+
+        return MockResponse()
+
+    monkeypatch.setattr(httpx.Client, "get", lambda self, url, params=None, **kw: mock_get(url, params))
+
+    adapter = PrometheusAdapter(prometheus_url="http://prometheus:9090")
+    metrics = adapter.fetch_metrics(["paymentservice"])
+    assert len(metrics) == 1
+    assert metrics[0].service == "paymentservice"
+    assert metrics[0].source == "real"
+    assert metrics[0].latency_p95_ms == 1850.0
+    assert metrics[0].error_rate == 0.42
+    assert metrics[0].status == "failing"
+
+
+def test_prometheus_adapter_down_raises_connection_error():
+    from app.adapters.prometheus import PrometheusAdapter, PrometheusConnectionError
+
+    # Non-existent local port
+    adapter = PrometheusAdapter(prometheus_url="http://127.0.0.1:59999", fallback_to_demo=False)
+    with pytest.raises(PrometheusConnectionError):
+        adapter.fetch_metrics(["paymentservice"])
+
+
+def test_evidence_gathering_prometheus_down_telemetry_degraded(monkeypatch):
+    from unittest.mock import MagicMock
+    from app.hypotheses.evidence import gather_evidence_for_hypotheses
+    from app.agents.orchestrator import event_bus
+    from app.tenant_settings import update_tenant_settings
+
+    # Configure tenant to use prometheus pointing to an invalid url
+    update_tenant_settings("tenant_down_test", {"telemetry_source": "prometheus", "prometheus_url": "http://127.0.0.1:59998"})
+
+    mock_graph = MagicMock()
+    mock_graph.tenant_id = "tenant_down_test"
+    mock_graph.query.return_value = None
+
+    captured_events = []
+    original_publish = event_bus.publish
+
+    def mock_publish(inc_id, event_type, data):
+        captured_events.append((event_type, data))
+        return original_publish(inc_id, event_type, data)
+
+    monkeypatch.setattr(event_bus, "publish", mock_publish)
+
+    hypotheses = [{"id": "hyp_01", "service": "paymentservice", "hops": 1}]
+    evidence_by_hyp, trace = gather_evidence_for_hypotheses(
+        graph=mock_graph,
+        hypotheses=hypotheses,
+        alerting_service="paymentservice",
+        incident_id="inc_test_degraded",
+    )
+
+    # 1. telemetry_degraded event MUST be published
+    event_types = [e[0] for e in captured_events]
+    assert "telemetry_degraded" in event_types
+
+    # 2. Graph node updated with telemetry_degraded = true
+    query_calls = [str(call) for call in mock_graph.query.call_args_list]
+    assert any("telemetry_degraded = true" in q for q in query_calls)
+
+    # 3. Evidence reflects honest fallback (demo_target or no data)
+    ev_list = evidence_by_hyp["hyp_01"]["supporting"] + evidence_by_hyp["hyp_01"]["contradicting"]
+    metric_ev = [ev for ev in ev_list if ev["type"] == "metric"]
+    assert len(metric_ev) > 0
+    assert metric_ev[0]["source"] in ("demo_target", "no data")
+
+
+def test_per_tenant_telemetry_adapter_resolution():
+    from app.adapters.resolver import get_adapter
+    from app.adapters.prometheus import PrometheusAdapter
+    from app.adapters.demo_target import DemoTargetAdapter
+    from app.tenant_settings import update_tenant_settings
+
+    update_tenant_settings("tenant_alpha_prom", {"telemetry_source": "prometheus", "prometheus_url": "http://prom.internal:9090"})
+    update_tenant_settings("tenant_beta_demo", {"telemetry_source": "demo_target"})
+
+    adapter_prom = get_adapter("tenant_alpha_prom")
+    adapter_demo = get_adapter("tenant_beta_demo")
+
+    assert isinstance(adapter_prom, PrometheusAdapter)
+    assert adapter_prom.prometheus_url == "http://prom.internal:9090"
+    assert isinstance(adapter_demo, DemoTargetAdapter)
+
 

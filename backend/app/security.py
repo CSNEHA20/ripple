@@ -95,40 +95,63 @@ def _save_dedupe_cache(cache: dict[str, float]) -> None:
 
 
 def verify_webhook_signature(
-    payload_bytes: bytes, signature_header: str | None, secret: str | None = None
+    payload_bytes: bytes,
+    signature_header: str | None = None,
+    secret: str | None = None,
+    auth_header: str | None = None,
+    token: str | None = None,
 ) -> bool:
-    """Verify HMAC SHA-256 signature on incoming alert webhook.
-    Fails closed in production if secret is not configured or signature is invalid.
+    """Verify incoming alert webhook using either:
+    1. HMAC SHA-256 signature (for systems that can sign payloads, e.g. GitHub, custom webhooks).
+    2. Shared Bearer token (for Prometheus Alertmanager or systems sending Authorization: Bearer <token>).
+
+    Both checks use constant-time comparison (hmac.compare_digest).
+    Fails closed in production if neither secret nor token is configured, or credentials are invalid.
     """
     effective_secret = secret if secret is not None else settings.webhook_secret
+    effective_token = token if token is not None else settings.webhook_token
 
     # Production fail-closed check
     if settings.environment == "production":
-        if not effective_secret:
-            logger.error("FATAL: Webhook secret must be configured in production environment.")
+        if not effective_secret and not effective_token:
+            logger.error("FATAL: Webhook secret or token must be configured in production environment.")
             raise HTTPException(status_code=500, detail="Webhook security misconfigured in production")
-        if not signature_header:
-            logger.warning("Rejecting alert webhook: missing X-Ripple-Signature header in production.")
+        if not signature_header and not auth_header:
+            logger.warning("Rejecting alert webhook: missing authentication credentials in production.")
             return False
 
-    if not effective_secret:
+    # If neither secret nor token is configured, allow bypass for local dev
+    if not effective_secret and not effective_token:
         return True
 
-    if not signature_header:
-        logger.warning("Rejecting alert webhook: missing X-Ripple-Signature header while secret is active.")
-        return False
+    # Mode 1: Shared Bearer Token (Alertmanager / Token mode)
+    if auth_header:
+        raw_token = auth_header.strip()
+        if raw_token.lower().startswith("bearer "):
+            raw_token = raw_token[7:].strip()
 
-    raw_sig = signature_header.strip()
-    if raw_sig.startswith("sha256="):
-        raw_sig = raw_sig.replace("sha256=", "")
+        expected_token = effective_token or effective_secret
+        if expected_token and hmac.compare_digest(raw_token, expected_token):
+            return True
 
-    expected = hmac.new(
-        effective_secret.encode("utf-8"),
-        payload_bytes,
-        hashlib.sha256,
-    ).hexdigest()
+    # Mode 2: HMAC SHA-256 Signature (GitHub / HMAC mode)
+    if signature_header:
+        raw_sig = signature_header.strip()
+        if raw_sig.startswith("sha256="):
+            raw_sig = raw_sig.replace("sha256=", "")
 
-    return hmac.compare_digest(raw_sig, expected)
+        expected_secret = effective_secret or effective_token
+        if expected_secret:
+            expected_hmac = hmac.new(
+                expected_secret.encode("utf-8"),
+                payload_bytes,
+                hashlib.sha256,
+            ).hexdigest()
+            if hmac.compare_digest(raw_sig, expected_hmac):
+                return True
+
+    logger.warning("Rejecting alert webhook: authentication credentials invalid or missing.")
+    return False
 
 
 def check_alert_dedupe(fingerprint: str, window_seconds: float = DEDUPE_WINDOW_SECONDS) -> bool:

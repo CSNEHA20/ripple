@@ -23,6 +23,12 @@ logger = logging.getLogger("ripple.backend")
 async def lifespan(app: FastAPI):
     logger.info("Ripple backend starting up. Checking FalkorDB connection...")
     try:
+        from app.adapters.demo_target import start_traffic_simulator, stop_traffic_simulator
+        start_traffic_simulator(1.0)
+    except Exception as e:
+        logger.debug(f"Could not start traffic simulator: {e}")
+
+    try:
         client = get_falkordb_client()
         # Initialize and ingest default tenants
         bootstrap_tenant_all("storefront")
@@ -31,6 +37,11 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"FalkorDB bootstrap on startup could not be completed: {e}")
     yield
+    try:
+        from app.adapters.demo_target import stop_traffic_simulator
+        stop_traffic_simulator()
+    except Exception:
+        pass
     logger.info("Ripple backend shutting down.")
 
 
@@ -83,9 +94,34 @@ from app.security import authenticate_api_key, require_role, check_alert_dedupe,
 def validate_security_configuration():
     """Fail closed in production if security configurations are missing."""
     if settings.environment == "production":
-        if not settings.webhook_secret:
-            logger.critical("FATAL: webhook_secret must be configured when ENVIRONMENT=production.")
-            raise RuntimeError("FATAL: webhook_secret must be configured when ENVIRONMENT=production.")
+        if not settings.webhook_secret and not settings.webhook_token:
+            logger.critical("FATAL: webhook_secret or webhook_token must be configured when ENVIRONMENT=production.")
+            raise RuntimeError("FATAL: webhook_secret or webhook_token must be configured when ENVIRONMENT=production.")
+
+
+def get_webhook_tenant(
+    request: Request,
+) -> TenantGraph:
+    """Dependency to extract tenant graph for webhook endpoints without requiring user API keys."""
+    target_tenant = sanitize_tenant_id(
+        request.headers.get("x-tenant")
+        or request.query_params.get("tenant")
+        or getattr(request.state, "tenant_id", None)
+        or "storefront"
+    )
+    request.state.tenant_id = target_tenant
+    try:
+        return TenantGraph(tenant_id=target_tenant)
+    except Exception:
+        class _OfflineTenantGraph:
+            def __init__(self, t_id: str):
+                self.tenant_id = t_id
+                self.graph_name = f"tenant_{t_id}"
+            def query(self, *args, **kwargs):
+                return None
+            def ping(self):
+                return False
+        return _OfflineTenantGraph(target_tenant)  # type: ignore
 
 
 def get_current_tenant(
@@ -240,17 +276,33 @@ async def alert_webhook(
     request: Request,
     background_tasks: BackgroundTasks,
     sync: bool = Query(default=False, description="Execute synchronously if true"),
-    graph: TenantGraph = Depends(get_current_tenant),
+    graph: TenantGraph = Depends(get_webhook_tenant),
 ):
     """Alert Intake Webhook:
     Accepts generic JSON alerts and Prometheus Alertmanager payloads,
-    verifies HMAC signature, deduplicates, and launches the 4-agent crew asynchronously.
+    verifies HMAC signature or shared Bearer token, deduplicates, and launches the 4-agent crew asynchronously.
     """
     try:
         body_bytes = await request.body()
-        sig = request.headers.get("X-Hub-Signature-256") or request.headers.get("X-Signature")
-        if not verify_webhook_signature(body_bytes, sig, settings.webhook_secret):
-            raise HTTPException(status_code=401, detail="Invalid webhook signature")
+        sig = (
+            request.headers.get("X-Hub-Signature-256")
+            or request.headers.get("X-Signature")
+            or request.headers.get("X-Ripple-Signature")
+        )
+        auth_header = (
+            request.headers.get("authorization")
+            or request.headers.get("Authorization")
+            or request.headers.get("X-Webhook-Token")
+        )
+
+        if not verify_webhook_signature(
+            payload_bytes=body_bytes,
+            signature_header=sig,
+            secret=settings.webhook_secret,
+            auth_header=auth_header,
+            token=settings.webhook_token,
+        ):
+            raise HTTPException(status_code=401, detail="Invalid webhook authentication (invalid signature or token)")
 
         payload = json.loads(body_bytes.decode("utf-8")) if body_bytes else {}
         service = "unknown"
@@ -268,11 +320,25 @@ async def alert_webhook(
             severity = labels.get("severity", "P2").upper()
             if severity not in ("P1", "P2", "P3"):
                 severity = "P1" if "critical" in severity.lower() else "P2"
+            if labels.get("tenant"):
+                tenant_from_label = sanitize_tenant_id(labels["tenant"])
+                if tenant_from_label != graph.tenant_id:
+                    try:
+                        graph = TenantGraph(tenant_id=tenant_from_label)
+                    except Exception:
+                        pass
         elif "service" in payload:
             service = payload["service"]
             alert_text = payload.get("text") or payload.get("description") or f"Degraded service alert on {service}"
             severity = payload.get("severity", "P2")
             scenario_id = payload.get("scenario_id")
+            if payload.get("tenant"):
+                tenant_from_payload = sanitize_tenant_id(payload["tenant"])
+                if tenant_from_payload != graph.tenant_id:
+                    try:
+                        graph = TenantGraph(tenant_id=tenant_from_payload)
+                    except Exception:
+                        pass
 
         # Deduplicate alert
         dedupe_key = f"{service}:{alert_text}"
@@ -1699,8 +1765,7 @@ class IntegrationSettingsUpdate(BaseModel):
     dry_run_default: bool | None = None
 
 
-# Tenant-scoped in-memory integration configuration store
-_TENANT_INTEGRATIONS: dict[str, dict[str, Any]] = {}
+from app.tenant_settings import get_tenant_settings, update_tenant_settings
 
 
 @app.get("/api/integrations/settings")
@@ -1708,17 +1773,7 @@ def api_get_integration_settings(
     graph: TenantGraph = Depends(get_current_tenant),
 ):
     """Retrieve integration settings for active tenant."""
-    tenant = graph.tenant_id
-    stored = _TENANT_INTEGRATIONS.get(tenant, {})
-    return {
-        "tenant_id": tenant,
-        "github_repo": stored.get("github_repo") or settings.github_repo,
-        "github_configured": bool(settings.github_token and (stored.get("github_repo") or settings.github_repo)),
-        "slack_configured": bool(stored.get("slack_webhook_url") or settings.slack_webhook_url),
-        "prometheus_url": stored.get("prometheus_url") or settings.prometheus_url,
-        "telemetry_source": stored.get("telemetry_source") or settings.telemetry_source,
-        "dry_run_default": stored.get("dry_run_default", False),
-    }
+    return get_tenant_settings(graph.tenant_id, graph=graph)
 
 
 @app.post("/api/integrations/settings")
@@ -1728,25 +1783,12 @@ def api_update_integration_settings(
     auth: dict[str, Any] = Depends(require_role("admin")),
 ):
     """Update integration settings for active tenant. Requires 'admin' role."""
-    tenant = graph.tenant_id
-    if tenant not in _TENANT_INTEGRATIONS:
-        _TENANT_INTEGRATIONS[tenant] = {}
-
-    if req.github_repo is not None:
-        _TENANT_INTEGRATIONS[tenant]["github_repo"] = req.github_repo
-    if req.slack_webhook_url is not None:
-        _TENANT_INTEGRATIONS[tenant]["slack_webhook_url"] = req.slack_webhook_url
-    if req.prometheus_url is not None:
-        _TENANT_INTEGRATIONS[tenant]["prometheus_url"] = req.prometheus_url
-    if req.telemetry_source is not None:
-        _TENANT_INTEGRATIONS[tenant]["telemetry_source"] = req.telemetry_source
-    if req.dry_run_default is not None:
-        _TENANT_INTEGRATIONS[tenant]["dry_run_default"] = req.dry_run_default
-
+    updates = req.model_dump(exclude_unset=True)
+    updated = update_tenant_settings(graph.tenant_id, updates, graph=graph)
     return {
         "status": "success",
-        "tenant_id": tenant,
-        "settings": _TENANT_INTEGRATIONS[tenant],
+        "tenant_id": graph.tenant_id,
+        "settings": updated,
     }
 
 

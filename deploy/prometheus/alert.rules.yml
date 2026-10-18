@@ -2,7 +2,7 @@ groups:
   - name: ripple_demo_alerts
     rules:
       - alert: ServiceHighLatency
-        expr: (http_request_duration_seconds_sum / http_request_duration_seconds_count) > 1.0
+        expr: histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[1m])) by (service, le)) > 1.0
         for: 10s
         labels:
           severity: critical
@@ -11,7 +11,7 @@ groups:
           description: "Service {{ $labels.service }} is experiencing p95 latency exceeding 1000ms."
 
       - alert: ServiceHighErrorRate
-        expr: (http_requests_total{status="500"} / http_requests_total) > 0.1
+        expr: sum(rate(http_requests_total{status=~"5.."}[1m])) by (service) / sum(rate(http_requests_total[1m])) by (service) > 0.1
         for: 10s
         labels:
           severity: critical

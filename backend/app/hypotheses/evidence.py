@@ -1,3 +1,4 @@
+import logging
 import time
 from typing import Any
 from app.config import settings
@@ -7,6 +8,8 @@ from app.tools.changes import recent_changes
 from app.tools.incidents import service_health, similar_incidents
 from app.tools.paths import path_between
 
+logger = logging.getLogger("ripple.hypotheses.evidence")
+
 
 def gather_evidence_for_hypotheses(
     graph: TenantGraph,
@@ -14,6 +17,7 @@ def gather_evidence_for_hypotheses(
     alerting_service: str,
     alert_text: str = "",
     as_of: float | None = None,
+    incident_id: str | None = None,
 ) -> tuple[dict[str, dict[str, list[dict[str, Any]]]], Trace]:
     """Gather supporting and contradicting evidence for each candidate hypothesis.
     Generates Evidence items with:
@@ -34,15 +38,21 @@ def gather_evidence_for_hypotheses(
     start_time = time.time()
     trace = Trace()
     ref_ts = float(as_of) if as_of is not None else time.time()
+    inc_id = incident_id or f"inc_{int(ref_ts)}"
 
     # Pre-fetch candidate service health metrics in one call
     candidate_services = list({h["service"] for h in hypotheses})
 
     # Pull fresh metrics from active telemetry adapter (Prometheus or Demo Target)
+    telemetry_degraded = False
+    telemetry_error_msg = ""
+    adapter_source_name = "unknown"
+
     try:
         from app.adapters.resolver import get_adapter
         from app.scenarios.metrics import create_metric_snapshot
         adapter = get_adapter(graph.tenant_id)
+        adapter_source_name = getattr(adapter, "source_name", "telemetry")
         live_records = adapter.fetch_metrics(candidate_services, ref_ts=ref_ts)
         for rec in live_records:
             create_metric_snapshot(
@@ -55,7 +65,56 @@ def gather_evidence_for_hypotheses(
                 source=rec.source,
             )
     except Exception as e:
-        pass
+        telemetry_degraded = True
+        telemetry_error_msg = str(e)
+        logger.warning(
+            f"Live telemetry fetch failed for tenant '{graph.tenant_id}' (source: {adapter_source_name}): {e}. "
+            "Marking telemetry as degraded."
+        )
+        # 1. Flag incident as telemetry_degraded in FalkorDB
+        try:
+            graph.query(
+                "MATCH (i:Incident {id: $id}) SET i.telemetry_degraded = true, i.telemetry_degraded_reason = $reason",
+                {"id": inc_id, "reason": telemetry_error_msg},
+            )
+        except Exception as g_err:
+            logger.debug(f"Could not set telemetry_degraded flag on incident node {inc_id}: {g_err}")
+
+        # 2. Publish telemetry_degraded event on event bus
+        try:
+            from app.agents.orchestrator import event_bus
+            event_bus.publish(
+                inc_id,
+                "telemetry_degraded",
+                {
+                    "incident_id": inc_id,
+                    "alerting_service": alerting_service,
+                    "source": adapter_source_name,
+                    "error": telemetry_error_msg,
+                    "services": candidate_services,
+                },
+            )
+        except Exception as bus_err:
+            logger.debug(f"Could not publish telemetry_degraded event: {bus_err}")
+
+        # 3. Honest fallback to demo target snapshots if available
+        try:
+            from app.adapters.demo_target import DemoTargetAdapter
+            from app.scenarios.metrics import create_metric_snapshot
+            demo_adapter = DemoTargetAdapter()
+            fallback_records = demo_adapter.fetch_metrics(candidate_services, ref_ts=ref_ts)
+            for rec in fallback_records:
+                create_metric_snapshot(
+                    graph=graph,
+                    service_name=rec.service,
+                    ts=rec.ts,
+                    latency_p95_ms=rec.latency_p95_ms,
+                    error_rate=rec.error_rate,
+                    status=rec.status,
+                    source=rec.source,
+                )
+        except Exception as fb_err:
+            logger.warning(f"Fallback demo_target metrics creation failed: {fb_err}")
 
     health_res = service_health(graph, services=candidate_services, ts=ref_ts)
     trace.merge(health_res.trace)
@@ -247,11 +306,13 @@ def gather_evidence_for_hypotheses(
             err_rate = snap.get("error_rate", 0.0)
             snap_src = snap.get("source", "seeded")
 
+            prefix = f"[DEGRADED TELEMETRY ({snap_src})] " if telemetry_degraded else ""
+
             if status in ("failing", "degraded"):
                 add_ev(
                     ev_type="metric",
                     polarity="support",
-                    summary=f"MetricSnapshot shows '{svc}' is {status} (p95 latency: {latency}ms, error rate: {err_rate:.1%}).",
+                    summary=f"{prefix}MetricSnapshot shows '{svc}' is {status} (p95 latency: {latency}ms, error rate: {err_rate:.1%}).",
                     source_ref=snap_id,
                     observed_ts=snap_ts,
                     kind="observed",
@@ -261,12 +322,22 @@ def gather_evidence_for_hypotheses(
                 add_ev(
                     ev_type="metric",
                     polarity="contradict",
-                    summary=f"MetricSnapshot shows '{svc}' is healthy/normal (p95 latency: {latency}ms, error rate: {err_rate:.1%}).",
+                    summary=f"{prefix}MetricSnapshot shows '{svc}' is healthy/normal (p95 latency: {latency}ms, error rate: {err_rate:.1%}).",
                     source_ref=snap_id,
                     observed_ts=snap_ts,
                     kind="observed",
                     source=snap_src,
                 )
+        else:
+            add_ev(
+                ev_type="metric",
+                polarity="contradict",
+                summary=f"No telemetry data available for '{svc}'" + (" (live telemetry degraded)." if telemetry_degraded else "."),
+                source_ref=f"no_data_{svc}",
+                observed_ts=ref_ts,
+                kind="observed",
+                source="no data",
+            )
 
 
         # -------------------------------------------------------------

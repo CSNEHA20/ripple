@@ -14,5 +14,6 @@ receivers:
       - url: "http://backend:8000/webhooks/alert"
         send_resolved: true
         http_config:
-          headers:
-            X-Ripple-Signature: "sha256=alerts_dev_signature"
+          authorization:
+            type: Bearer
+            credentials: "ripple_alertmanager_token_secret"

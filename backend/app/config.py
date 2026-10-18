@@ -70,6 +70,7 @@ class Settings(BaseSettings):
     github_repo: str | None = None
     data_dir: str = "data"
     webhook_secret: str | None = None
+    webhook_token: str | None = None
     slack_webhook_url: str | None = None
     prometheus_url: str = "http://localhost:9090"
     telemetry_source: str = "simulator"

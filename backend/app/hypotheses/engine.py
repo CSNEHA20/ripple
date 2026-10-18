@@ -52,6 +52,7 @@ def run_investigation(
         alerting_service=alerting_service,
         alert_text=alert_text,
         as_of=ref_ts,
+        incident_id=inc_id,
     )
     trace.merge(ev_trace)
 
